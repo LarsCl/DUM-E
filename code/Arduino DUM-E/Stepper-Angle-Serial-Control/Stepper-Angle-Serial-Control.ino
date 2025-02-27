@@ -1,6 +1,8 @@
 #include <Wire.h>
 #include <PCF8574.h>
 
+
+
 // Define PCF8574 addresses
 #define PCF_COUNT 4
 uint8_t PCF_ADDRESSES[PCF_COUNT] = {0x23, 0x22, 0x21, 0x20};
@@ -12,6 +14,12 @@ PCF8574 pcf[PCF_COUNT] = {
     PCF8574(0x21),
     PCF8574(0x20)
 };
+
+//Gear ratios and stepcount
+static int SteppermotorGear = 18;
+static int BigPullyGear = 120;
+static int FullRotationStepCount = 200;
+static int DefaultSpeed = 500;
 
 // Step pins for each motor
 #define STEP0_PIN 2
@@ -68,61 +76,41 @@ void setup() {
         digitalWrite(step_pins[i], LOW);
 
         // Initialize motor configurations
-        motors[i] = {0, 500, 100, 100, 0}; // Default values
+        motors[i] = {0, 500, 0, 0, 0}; // Default values
     }
     //BASIC MOTOR COMMAND "M P0d S500d A100d D100d P0d S500d A100d D100d P0d S500d A100d D100d P0d S500d A100d D100d"
     Serial.println("All stepper motors initialized!");
 }
 
 void loop() {
-    if (Serial.available()) {
-        parseSerialCommand();
+    for(int i = 0; i< 4; i++){
+      pcf[i].write(SLP_PIN, HIGH);
+      pcf[i].write(RST_PIN, HIGH);
+      pcf[i].write(EN_PIN, LOW);
     }
-    turnsimple(0);
+    if (Serial.read() != -1) {
+      calculateMotorPositions(0,720);
+    }
+    
     moveMotorsSimultaneously();
-}
-
-void parseSerialCommand() {
-    String command = Serial.readStringUntil('\n');  // Read command
-    command.trim();  // Remove whitespace
-
-    if (command.length() == 0 || command.charAt(0) != 'M') return;
-
-    int params[PCF_COUNT * 4]; // Stores P, S, A, D for each motor
-
-    int matched = sscanf(command.c_str(), "M P%d S%d A%d D%d P%d S%d A%d D%d P%d S%d A%d D%d P%d S%d A%d D%d",
-        &params[0], &params[1], &params[2], &params[3],
-        &params[4], &params[5], &params[6], &params[7],
-        &params[8], &params[9], &params[10], &params[11],
-        &params[12], &params[13], &params[14], &params[15]);
-
-    if (matched == 16) {
-        for (int i = 0; i < PCF_COUNT; i++) {
-            motors[i].position = params[i * 4 + 0];
-            motors[i].speed = params[i * 4 + 1];
-            motors[i].accel = params[i * 4 + 2];
-            motors[i].decel = params[i * 4 + 3];
-
-            Serial.print("Motor "); Serial.print(i);
-            Serial.print(" -> P: "); Serial.print(motors[i].position);
-            Serial.print(", S: "); Serial.print(motors[i].speed);
-            Serial.print(", A: "); Serial.print(motors[i].accel);
-            Serial.print(", D: "); Serial.println(motors[i].decel);
-        }
-    } else {
-        Serial.println("Invalid command format!");
-    }
 }
 
 void moveMotorsSimultaneously() {
     int maxSteps = 0;
-
+    int allStepsRemaining[PCF_COUNT]; 
     for (int i = 0; i < PCF_COUNT; i++) {
         int stepsRemaining = abs(motors[i].position - motors[i].current_pos);
+        allStepsRemaining[i] = stepsRemaining;
         if (stepsRemaining > maxSteps) {
             maxSteps = stepsRemaining;
         }
     }
+
+    // for (int i = 0; i < PCF_COUNT; i++) {
+    //     if(allStepsRemaining > 1){
+    //       motors[i].speed = ((double)maxSteps * (double)DefaultSpeed) / (double)allStepsRemaining[i];
+    //     }
+    // }
 
     for (int step = 0; step < maxSteps; step++) {
         for (int i = 0; i < PCF_COUNT; i++) {
@@ -154,8 +142,21 @@ void moveMotorsSimultaneously() {
         }
     }
 
-    Serial.println("All motors reached target positions.");
+    //Serial.println("All motors reached target positions.");
 }
+
+void calculateMotorPositions(double angle, double rotation){
+  int gearRatio = FullRotationStepCount * (1/1/1);
+  double stepsmotor1 = angle * (((BigPullyGear/ SteppermotorGear) * gearRatio) /360);
+  double stepsmotor2 = 0 - stepsmotor1;
+  
+  double rotationsteps = rotation * (((BigPullyGear/ SteppermotorGear) * gearRatio) /360);
+  motors[2].position = stepsmotor1 - rotationsteps;
+  motors[3].position = stepsmotor2 - rotationsteps;
+  Serial.print(motors[2].position);
+  Serial.print(" ");
+  Serial.print(motors[3].position);
+} 
 
 void turnsimple(int motorindex){
   pcf[motorindex].write(DIR_PIN, HIGH);  // Forward direction

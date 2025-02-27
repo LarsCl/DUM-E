@@ -1,10 +1,10 @@
 #include <Wire.h>
 #include <PCF8574.h>
 
-#define PCF_ADDRESS 0x23  // PCF8574P Address
+#define PCF_ADDRESS 0x21  // PCF8574P Address
 PCF8574 pcf(PCF_ADDRESS);
 
-#define STEP_PIN 2  // Step signal directly from Arduino
+#define STEP_PIN 4  // Step signal directly from Arduino
 
 // PCF8574 Pin Assignments
 #define FLT_PIN   0
@@ -40,11 +40,11 @@ void loop() {
     pcf.write(DIR_PIN, HIGH);  // Forward direction
 
     // Move the motor
-    for (int i = 0; i < 200; i++) {  // Adjust steps based on microstepping
+    for (int i = 0; i < 100; i++) {  // Adjust steps based on microstepping
         digitalWrite(STEP_PIN, HIGH);
-        delay(1);  // Speed control
+        delay(10);  // Speed control
         digitalWrite(STEP_PIN, LOW);
-        delay(1);
+        delay(10);
     }
 
     delay(1000);  // Pause
@@ -52,11 +52,11 @@ void loop() {
     // Change direction
     pcf.write(DIR_PIN, LOW);
 
-    for (int i = 0; i < 200; i++) {
+    for (int i = 0; i < 100; i++) {
         digitalWrite(STEP_PIN, HIGH);
-        delay(1);
+        delay(10);
         digitalWrite(STEP_PIN, LOW);
-        delay(1);
+        delay(10);
     }
     Serial.print(pcf.read(FLT_PIN));
     delay(1000);  // Pause
