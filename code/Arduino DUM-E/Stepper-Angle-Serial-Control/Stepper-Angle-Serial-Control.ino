@@ -62,7 +62,6 @@ void setup() {
         pcf[i].write(RST_PIN, HIGH);  // Keep driver out of reset
         pcf[i].write(SLP_PIN, HIGH);  // Wake up driver
         pcf[i].write(EN_PIN, LOW);    // Enable motor (LOW = enabled)
-
         // Set microstepping (Full Step Mode)
         pcf[i].write(M0_PIN, LOW);
         pcf[i].write(M1_PIN, LOW);
@@ -80,6 +79,7 @@ void setup() {
     }
     //BASIC MOTOR COMMAND "M P0d S500d A100d D100d P0d S500d A100d D100d P0d S500d A100d D100d P0d S500d A100d D100d"
     Serial.println("All stepper motors initialized!");
+
 }
 
 void loop() {
@@ -89,7 +89,7 @@ void loop() {
       pcf[i].write(EN_PIN, LOW);
     }
     if (Serial.read() != -1) {
-      calculateMotorPositions(0,720);
+      calculateMotorPositions(0,90);
     }
     
     moveMotorsSimultaneously();
@@ -106,11 +106,6 @@ void moveMotorsSimultaneously() {
         }
     }
 
-    // for (int i = 0; i < PCF_COUNT; i++) {
-    //     if(allStepsRemaining > 1){
-    //       motors[i].speed = ((double)maxSteps * (double)DefaultSpeed) / (double)allStepsRemaining[i];
-    //     }
-    // }
 
     for (int step = 0; step < maxSteps; step++) {
         for (int i = 0; i < PCF_COUNT; i++) {
@@ -157,6 +152,53 @@ void calculateMotorPositions(double angle, double rotation){
   Serial.print(" ");
   Serial.print(motors[3].position);
 } 
+
+void MoveToMotorPositions(){
+  int maxSteps = 0;
+  int allStepsRemaining[PCF_COUNT]; 
+  for (int i = 0; i < PCF_COUNT; i++) {
+    int stepsRemaining = abs(motors[i].position - motors[i].current_pos);
+    allStepsRemaining[i] = stepsRemaining;
+    if (stepsRemaining > maxSteps) {
+        maxSteps = stepsRemaining;
+    }
+  }
+  for (int i = 0; i < PCF_COUNT; i++) {
+    if(allStepsRemaining > 1){
+      motors[i].speed = ((double)maxSteps * (double)DefaultSpeed) / (double)allStepsRemaining[i];
+    }
+  }
+
+  for (int step = 0; step < maxSteps; step++) {
+        for (int i = 0; i < PCF_COUNT; i++) {
+            int stepsRemaining = abs(motors[i].position - motors[i].current_pos);
+            if (stepsRemaining > 0) {
+                // Set direction
+                if (motors[i].position > motors[i].current_pos) {
+                    pcf[i].write(DIR_PIN, HIGH);  
+                } else {
+                    pcf[i].write(DIR_PIN, LOW);   
+                }
+
+                // Step the motor
+                digitalWrite(step_pins[i], HIGH);
+                delayMicroseconds(motors[i].speed);
+                digitalWrite(step_pins[i], LOW);
+                delayMicroseconds(motors[i].speed);
+
+                // Acceleration / Deceleration Handling
+                if (step < stepsRemaining / 3) {
+                    motors[i].speed -= motors[i].accel;
+                } else if (step > (stepsRemaining - (stepsRemaining / 3))) {
+                    motors[i].speed += motors[i].decel;
+                }
+
+                // Update current position
+                motors[i].current_pos += (motors[i].position > motors[i].current_pos) ? 1 : -1;
+            }
+        }
+    }
+}
 
 void turnsimple(int motorindex){
   pcf[motorindex].write(DIR_PIN, HIGH);  // Forward direction
