@@ -128,8 +128,8 @@ void setup()
         stepper_motor[i].pcf_addr = pcfs[i].getAddress();
         stepper_motor[i].unit_pcf = &pcfs[i];
 
-        Serial.print("Initializing PCF8574 at address 0x");
-        Serial.println(pcfs[i].getAddress(), HEX);
+        //Serial.print("Initializing PCF8574 at address 0x");
+        //Serial.println(pcfs[i].getAddress(), HEX);
 
         stepper_motor[i].unit_pcf->begin();
 
@@ -148,7 +148,7 @@ void setup()
         }
         else
         {
-            Serial.println("Init suc6");
+            //Serial.println("Init suc6");
         }
         /* Seems that initial value define doesn't do it?*/
         // stepper_motor[i].unit_pcf->write8(0b01010011);
@@ -172,6 +172,7 @@ void setup()
 
 void calculateMotorPositions(double angle, double rotation)
 {
+    
     int gearRatio = FullRotationStepCount * (1 / 1 / 1);
     double stepsmotor1 = angle * (((BigPullyGear / SteppermotorGear) * gearRatio) / 360);
     double stepsmotor2 = 0 - stepsmotor1;
@@ -181,7 +182,7 @@ void calculateMotorPositions(double angle, double rotation)
     stepper_motor[3].position_setpoint = stepsmotor2 - rotationsteps;
     Serial.print(stepper_motor[2].position_setpoint);
     Serial.print(" ");
-    Serial.print(stepper_motor[3].position_setpoint);
+    Serial.println(stepper_motor[3].position_setpoint);
 }
 
 void moveMotorsSimultaneously()
@@ -190,6 +191,7 @@ void moveMotorsSimultaneously()
     int allStepsRemaining[PCF_COUNT];
     for (int i = 0; i < PCF_COUNT; i++)
     {
+        
         int stepsRemaining = abs(stepper_motor[i].position_setpoint - stepper_motor[i].current_position);
         allStepsRemaining[i] = stepsRemaining;
         if (stepsRemaining > maxSteps)
@@ -198,38 +200,35 @@ void moveMotorsSimultaneously()
         }
     }
 
-    // for (int i = 0; i < PCF_COUNT; i++) {
-    //     if(allStepsRemaining > 1){
-    //       motors[i].speed = ((double)maxSteps * (double)DefaultSpeed) / (double)allStepsRemaining[i];
-    //     }
-    // }
-
     for (int step = 0; step < maxSteps; step++)
     {
-        Serial.println("Made it here");
+        
         for (int i = 0; i < PCF_COUNT; i++)
         {
             int stepsRemaining = abs(stepper_motor[i].position_setpoint - stepper_motor[i].current_position);
             if (stepsRemaining > 0)
             {
+                
                 // Set direction
                 if (stepper_motor[i].position_setpoint > stepper_motor[i].current_position)
                 {
-                    stepper_motor[i].unit_pcf[i].write(DIR_PIN, HIGH);
+                    stepper_motor[i].unit_pcf->write(DIR_PIN, HIGH);
                 }
                 else
                 {
-                    stepper_motor[i].unit_pcf[i].write(DIR_PIN, LOW);
+                    Serial.println(i);
+                    stepper_motor[i].unit_pcf->write(DIR_PIN, LOW);
+                    Serial.println(i);
                 }
-
+                
                 // Step the motor
                 digitalWrite(step_pins[i], HIGH);
                 delayMicroseconds(stepper_motor[i].max_rot_velocity);
                 digitalWrite(step_pins[i], LOW);
                 delayMicroseconds(stepper_motor[i].max_rot_velocity);
-
                 // Update current position
                 stepper_motor[i].current_position += (stepper_motor[i].position_setpoint > stepper_motor[i].current_position) ? 1 : -1;
+                
             }
         }
     }
@@ -239,8 +238,25 @@ void moveMotorsSimultaneously()
 
 void loop()
 {
-    calculateMotorPositions(0, 90);
-    moveMotorsSimultaneously();
+    calculateMotorPositions(0,90);
+    stepper_motor[2].unit_pcf->write(DIR_PIN, HIGH);
+    stepper_motor[1].unit_pcf->write(DIR_PIN, HIGH);
+    for(int i =0; i < 200; i++){
+        digitalWrite(STEP2_PIN, 1);
+        delayMicroseconds(1000);
+        digitalWrite(STEP2_PIN, 0);
+        delayMicroseconds(1000);
+    }
+    stepper_motor[2].unit_pcf->write(DIR_PIN, LOW);
+    stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
+    for(int i =0; i < 200; i++){
+        digitalWrite(STEP2_PIN, 1);
+        delayMicroseconds(1000);
+        digitalWrite(STEP2_PIN, 0);
+        delayMicroseconds(1000);
+    }
+
+    
 }
 
 // void turnsimple(int motorindex)
