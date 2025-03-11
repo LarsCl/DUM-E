@@ -38,13 +38,17 @@
 #define ANALOG6 6
 #define ANALOG7 7
 
+/* Is (60*10^6)/ (RPM * 200), returns uS per rotation */
+#define RPM_TO_STEP_US(x) (0x3938700 / (x * 200))
+
 /* Frequency of stepper control loop in Hertz */
 #define CL_FREQ 1000
 #define CL_PERIOD_US (0xF4240 / CL_FREQ)
 
-#define DEFAULT_MAX_ROT_VEL 60 /*60RPM*/
-#define DEFAULT_ROT_ACCEL 15   /*15RPM*/
-#define DEFAULT_ROT_ACCEL_MAX 200
+/* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
+#define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
+/* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
+#define DEFAULT_ROT_ACCEL 45 /*45RPM // 0.75 rev/min^2 */
 
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
@@ -69,15 +73,20 @@ struct MotorConfig {
   int position_setpoint;  // Target position in step pulses.
   int current_position;   // Current step position
 
-  int max_rot_velocity;     // Maximum rotational velocity RPM
-  int current_rot_velocity; /**/
+  int max_rot_velocity; /* Maximum rotational velocity in RPM used to limit */
+  int current_rot_velocity; /* Current velocity in RPM*/
+  int accel_rate;           // Acceleration rate
+
+  /* A scale to slow accel and velocity for synchronous movement of axes*/
+  float movement_speed_scale;
 
   uint32_t next_step_time;
+  uint32_t step_toggle_time;
   uint32_t set_exec_time;
 
-  int accel_rate;  // Acceleration rate
-
-  bool homed; /*Is this axis homed?*/
+  bool homed;         /*Is this axis homed?*/
+  bool block_control; /* Flag to software block driving this motor. true is
+                         blocking*/
 
   /*Motor ctrl info*/
   uint8_t pcf_addr;
@@ -85,21 +94,22 @@ struct MotorConfig {
   /* Associated PCF of this unit*/
   PCF8574 *unit_pcf;
   uint8_t stepper_mode; /*0-5 defines microstepping config of DRV8825*/
-
-  /* Memory for control loop*/
 };
 
 MotorConfig stepper_motor[PCF_COUNT];
 
-/* Enable or disable stepper motor, 1 is ON*/
+/* Hardware enable or disable stepper motor, 1 is ON*/
 void set_stepper_drive(MotorConfig *unit_config, bool onoffvalue);
+/* Software block driving of a specific motor*/
+void set_stepper_block(MotorConfig *unit_config, bool onoffvalue);
+
 /* 0 is fullstep, 1 is 1/2, 2 is 1/4, 3 is 1/8, 4 is 1/16, 5 is 1/32 */
 void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize);
-/* we may want to change the setpoint to position in angles? */
+/* Position to move this axis to a certain setpoint position*/
 void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse);
-
+/* Change acceleration rate of a motor */
 void set_stepper_rate(MotorConfig *unit_config, int accelrate);
-
+/* Change max velocity of motor */
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity);
 
 /* Polling function that controls pulses, calculates when the next pulse should
@@ -135,7 +145,7 @@ void setup() {
 
   /*PCB GPIO*/
 
-  // Initialize all PCF8574 expanders
+  // Initialize all PCF8574 expanders and cfg arduino pin
   for (int i = 0; i < PCF_COUNT; i++) {
     stepper_motor[i].pcf_addr = pcfs[i].getAddress();
     stepper_motor[i].unit_pcf = &pcfs[i];
@@ -151,9 +161,12 @@ void setup() {
     stepper_motor[i].max_rot_velocity = DEFAULT_MAX_ROT_VEL;
     stepper_motor[i].current_rot_velocity = 0;
     stepper_motor[i].accel_rate = DEFAULT_MAX_ROT_VEL;
+    stepper_motor[i].movement_speed_scale = 1.0f;
     stepper_motor[i].homed = false;
+    stepper_motor[i].block_control = true;
     stepper_motor[i].step_pulse_pin = step_pins[i];
 
+    /* Set initial PCF GPIO */
     stepper_motor[i].unit_pcf->write(NEN_PIN, 0);
     stepper_motor[i].unit_pcf->write(NSLP_PIN, 1);
     stepper_motor[i].unit_pcf->write(NRST_PIN, 1);
@@ -162,16 +175,16 @@ void setup() {
     stepper_motor[i].unit_pcf->write(M1_PIN, 0);
     stepper_motor[i].unit_pcf->write(M2_PIN, 0);
 
-    /*Test if PCF is OK*/
+    /*Test if PCF is OK (reachable on I2C)*/
     if (!stepper_motor[i].unit_pcf->isConnected()) {
       Serial.println("Failed!, unit can't be found on I2C bus.");
     } else {
       Serial.println("Init suc6");
     }
-    /* Seems that initial value define doesn't do it?*/
-    // stepper_motor[i].unit_pcf->write8(0b01010011);
+
+    /* TODO, this is for debug operation. This enables the motor and sets the
+     * micro steppng to max */
     stepper_motor[i].unit_pcf->write8(0b11111111);
-    // stepper_motor[i].unit_pcf->write(NEN_PIN, 1);
   }
 
   // BASIC MOTOR COMMAND "M P0d S500d A100d D100d P0d S500d A100d D100d P0d
@@ -179,137 +192,135 @@ void setup() {
   // initialized!"); stepper_enable(&stepper_motor[2]);
 }
 
-void calculateMotorPositions(double angle, double rotation)
-{
-    
-    int gearRatio = FullRotationStepCount * (1 / 1 / 1);
-    double stepsmotor1 = angle * (((BigPullyGear / SteppermotorGear) * gearRatio) / 360);
-    double stepsmotor2 = 0 - stepsmotor1;
+void calculateMotorPositions(double angle, double rotation) {
+  int gearRatio = FullRotationStepCount * (1 / 1 / 1);
+  double stepsmotor1 =
+      angle * (((BigPullyGear / SteppermotorGear) * gearRatio) / 360);
+  double stepsmotor2 = 0 - stepsmotor1;
 
-    double rotationsteps = rotation * (((BigPullyGear / SteppermotorGear) * gearRatio) / 360);
-    stepper_motor[2].position_setpoint = stepsmotor1 - rotationsteps;
-    stepper_motor[3].position_setpoint = stepsmotor2 - rotationsteps;
-    Serial.print(stepper_motor[2].position_setpoint);
-    Serial.print(" ");
-    Serial.println(stepper_motor[3].position_setpoint);
-    stepper_motor[2].next_step_time = micros() + stepper_motor[2].max_rot_velocity;
-    stepper_motor[3].next_step_time = micros() + stepper_motor[3].max_rot_velocity;
+  double rotationsteps =
+      rotation * (((BigPullyGear / SteppermotorGear) * gearRatio) / 360);
+  stepper_motor[2].position_setpoint = stepsmotor1 - rotationsteps;
+  stepper_motor[3].position_setpoint = stepsmotor2 - rotationsteps;
+  Serial.print(stepper_motor[2].position_setpoint);
+  Serial.print(" ");
+  Serial.println(stepper_motor[3].position_setpoint);
+  stepper_motor[2].next_step_time =
+      micros() + stepper_motor[2].max_rot_velocity;
+  stepper_motor[3].next_step_time =
+      micros() + stepper_motor[3].max_rot_velocity;
 }
 
-void moveMotorsSimultaneously()
-{
-    int maxSteps = 0;
-    int allStepsRemaining[PCF_COUNT];
-    for (int i = 0; i < PCF_COUNT; i++)
-    {
-        
-        int stepsRemaining = abs(stepper_motor[i].position_setpoint - stepper_motor[i].current_position);
-        allStepsRemaining[i] = stepsRemaining;
-        if (stepsRemaining > maxSteps)
-        {
-            maxSteps = stepsRemaining;
-        }
+void moveMotorsSimultaneously() {
+  int maxSteps = 0;
+  int allStepsRemaining[PCF_COUNT];
+  for (int i = 0; i < PCF_COUNT; i++) {
+    int stepsRemaining = abs(stepper_motor[i].position_setpoint -
+                             stepper_motor[i].current_position);
+    allStepsRemaining[i] = stepsRemaining;
+    if (stepsRemaining > maxSteps) {
+      maxSteps = stepsRemaining;
     }
+  }
 
-    for (int step = 0; step < maxSteps; step++)
-    {
-        
-        for (int i = 0; i < PCF_COUNT; i++)
-        {
-            int stepsRemaining = abs(stepper_motor[i].position_setpoint - stepper_motor[i].current_position);
-            if (stepsRemaining > 0)
-            {
-                
-                // Set direction
-                if (stepper_motor[i].position_setpoint > stepper_motor[i].current_position)
-                {
-                    stepper_motor[i].unit_pcf->write(DIR_PIN, HIGH);
-                }
-                else
-                {
-                    Serial.println(i);
-                    stepper_motor[i].unit_pcf->write(DIR_PIN, LOW);
-                    Serial.println(i);
-                }
-                
-                // Step the motor
-                digitalWrite(step_pins[i], HIGH);
-                delayMicroseconds(stepper_motor[i].max_rot_velocity);
-                digitalWrite(step_pins[i], LOW);
-                delayMicroseconds(stepper_motor[i].max_rot_velocity);
-                // Update current position
-                stepper_motor[i].current_position += (stepper_motor[i].position_setpoint > stepper_motor[i].current_position) ? 1 : -1;
-                
-            }
+  for (int step = 0; step < maxSteps; step++) {
+    for (int i = 0; i < PCF_COUNT; i++) {
+      int stepsRemaining = abs(stepper_motor[i].position_setpoint -
+                               stepper_motor[i].current_position);
+      if (stepsRemaining > 0) {
+        // Set direction
+        if (stepper_motor[i].position_setpoint >
+            stepper_motor[i].current_position) {
+          stepper_motor[i].unit_pcf->write(DIR_PIN, HIGH);
+        } else {
+          Serial.println(i);
+          stepper_motor[i].unit_pcf->write(DIR_PIN, LOW);
+          Serial.println(i);
         }
-    }
 
-    // Serial.println("All motors reached target positions.");
+        // Step the motor
+        digitalWrite(step_pins[i], HIGH);
+        delayMicroseconds(stepper_motor[i].max_rot_velocity);
+        digitalWrite(step_pins[i], LOW);
+        delayMicroseconds(stepper_motor[i].max_rot_velocity);
+        // Update current position
+        stepper_motor[i].current_position +=
+            (stepper_motor[i].position_setpoint >
+             stepper_motor[i].current_position)
+                ? 1
+                : -1;
+      }
+    }
+  }
+
+  // Serial.println("All motors reached target positions.");
 }
 
-void movemotors(){
-    for (int i = 0; i < PCF_COUNT; i++)
-        {   
-            int stepsRemaining = abs(stepper_motor[i].position_setpoint - stepper_motor[i].current_position);
-            if (stepsRemaining > 0 && micros() >= stepper_motor[i].next_step_time)
-            {
-                // Set direction
-                if (stepper_motor[i].position_setpoint > stepper_motor[i].current_position)
-                {
-                    stepper_motor[i].unit_pcf->write(DIR_PIN, HIGH);
-                }
-                else
-                {
-                    stepper_motor[i].unit_pcf->write(DIR_PIN, LOW);
-                }
-                //TODO: check current velocity, calculate and compare whether (setpoint - current position) is higher than distance needed to decelarate from current velocity.
-                stepper_motor[i].set_exec_time = micros();
-                stepper_motor[i].next_step_time = micros() + 2000;
-                // Update current position
-                stepper_motor[i].current_position += (stepper_motor[i].position_setpoint > stepper_motor[i].current_position) ? 1 : -1;
-            }
-            else if(stepsRemaining > 0 && micros() >= stepper_motor[i].set_exec_time)
-            {
-                if(micros() <= stepper_motor[i].set_exec_time + (stepper_motor[i].next_step_time - stepper_motor[i].set_exec_time)/2)
-                {
-                    //Serial.print("1");
-                    digitalWrite(step_pins[i], LOW);
-                }else
-                {
-                    // Step the motor HIGH
-                    //Serial.print("2");
-                    digitalWrite(step_pins[i], HIGH);
-                }
-            }
-        }
+void movemotors() {
+  for (int i = 0; i < PCF_COUNT; i++) {
+    int stepsRemaining = abs(stepper_motor[i].position_setpoint -
+                             stepper_motor[i].current_position);
+    if (stepsRemaining > 0 && micros() >= stepper_motor[i].next_step_time) {
+      // Set direction
+      if (stepper_motor[i].position_setpoint >
+          stepper_motor[i].current_position) {
+        stepper_motor[i].unit_pcf->write(DIR_PIN, HIGH);
+      } else {
+        stepper_motor[i].unit_pcf->write(DIR_PIN, LOW);
+      }
+      // TODO: check current velocity, calculate and compare whether (setpoint -
+      // current position) is higher than distance needed to decelarate from
+      // current velocity.
+      stepper_motor[i].set_exec_time = micros();
+      stepper_motor[i].next_step_time = micros() + 2000;
+      // Update current position
+      stepper_motor[i].current_position += (stepper_motor[i].position_setpoint >
+                                            stepper_motor[i].current_position)
+                                               ? 1
+                                               : -1;
+    } else if (stepsRemaining > 0 &&
+               micros() >= stepper_motor[i].set_exec_time) {
+      if (micros() <=
+          stepper_motor[i].set_exec_time + (stepper_motor[i].next_step_time -
+                                            stepper_motor[i].set_exec_time) /
+                                               2) {
+        // Serial.print("1");
+        digitalWrite(step_pins[i], LOW);
+      } else {
+        // Step the motor HIGH
+        // Serial.print("2");
+        digitalWrite(step_pins[i], HIGH);
+      }
+    }
+  }
 }
 
 void loop() {
-    // if(stepper_motor[2].current_position == stepper_motor[2].position_setpoint){
-    //     calculateMotorPositions(90,0);
-    // }
+  // if(stepper_motor[2].current_position ==
+  // stepper_motor[2].position_setpoint){
+  //     calculateMotorPositions(90,0);
+  // }
 
-    stepper_motor[2].unit_pcf->write(DIR_PIN, HIGH);
-    stepper_motor[1].unit_pcf->write(DIR_PIN, HIGH);
-    for(int i =0; i < 200; i++){
-        digitalWrite(STEP2_PIN, 1);
-        delayMicroseconds(1000);
-        digitalWrite(STEP2_PIN, 0);
-        delayMicroseconds(1000);
-    }
-    stepper_motor[2].unit_pcf->write(DIR_PIN, LOW);
-    stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
-    for(int i =0; i < 200; i++){
-        digitalWrite(STEP2_PIN, 1);
-        delayMicroseconds(1000);
-        digitalWrite(STEP2_PIN, 0);
-        delayMicroseconds(1000);
-    }
-    //movemotors();
+  // stepper_motor[2].unit_pcf->write(DIR_PIN, HIGH);
+  // stepper_motor[1].unit_pcf->write(DIR_PIN, HIGH);
+  // for (int i = 0; i < 200; i++) {
+  //   digitalWrite(STEP2_PIN, 1);
+  //   delayMicroseconds(1000);
+  //   digitalWrite(STEP2_PIN, 0);
+  //   delayMicroseconds(1000);
+  // }
+  // stepper_motor[2].unit_pcf->write(DIR_PIN, LOW);
+  // stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
+  // for (int i = 0; i < 200; i++) {
+  //   digitalWrite(STEP2_PIN, 1);
+  //   delayMicroseconds(1000);
+  //   digitalWrite(STEP2_PIN, 0);
+  //   delayMicroseconds(1000);
+  // }
+  // movemotors();
 }
 
-
-/*Enable the stepper driver*/
+/*Control the enable pin oft the stepper driver module*/
 void set_stepper_drive(MotorConfig *unit_config, bool on_off_value) {
   unit_config->unit_pcf->write(NEN_PIN, 0);
 }
@@ -327,12 +338,9 @@ void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize) {
 
 void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {}
 
-void set_stepper_rate(MotorConfig *unit_config, int accelrate) {
-  if (accelrate > DEFAULT_ROT_ACCEL_MAX) {
-    Serial.println("ERROR! Requested set accelaration rate out of bounds.");
-    return;
-  }
-  unit_config->accel_rate = accelrate;
+void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
+  /*Beware for too high acceleration rates*/
+  unit_config->accel_rate = accelerate;
 }
 
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
@@ -340,6 +348,8 @@ void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
 }
 
 void stepper_control_loop() {
+  static uint8_t mtr_index;
+
   /* operation thoughts:
   The function starts off by checking whether [current position == setpoint]
   if setpoint value is higher or lower, corresponding movement direction is set
@@ -372,4 +382,91 @@ void stepper_control_loop() {
     STEP pulse pin is LOW, if above, step pulse pin is HIGH. This ensures async
     operation.
 */
+
+  if (stepper_motor[mtr_index].block_control) {
+    // Serial.println("This unit is blocked, skipping");
+    mtr_index++;
+    mtr_index %= (PCF_COUNT + 1);
+    return;
+  }
+
+  if (!stepper_motor[mtr_index].homed) {
+    // Serial.println("This unit isnt homed, skipping");
+    mtr_index++;
+    mtr_index %= (PCF_COUNT + 1);
+    return;
+  }
+
+  /* We check if there is a position error*/
+
+  int pos_error = (stepper_motor[mtr_index].position_setpoint -
+                   stepper_motor[mtr_index].current_position);
+
+  if (pos_error == 0) {
+    Serial.println("Is on SP.");
+    mtr_index++;
+    mtr_index %= (PCF_COUNT + 1);
+    return;
+  }
+
+  /* A step elapsed, time to set next time goal*/
+  if (micros() >= stepper_motor[mtr_index].next_step_time) {
+    /*set direction of movement*/
+    if (pos_error > 0) {
+      stepper_motor[mtr_index].unit_pcf->write(
+          stepper_motor[mtr_index].step_pulse_pin, 1);
+    } else {
+      stepper_motor[mtr_index].unit_pcf->write(
+          stepper_motor[mtr_index].step_pulse_pin, 0);
+    }
+
+    /*calculate current step period time from velocity  */
+    /* uS per rotation is (60*10^6)/rpm
+     * and (uS/Rev)/200 = step period in uS, TODO, autoadjust with microstep
+     * setting  */
+
+    /*TODO, maybe using Rev/M was a bad idea, why not use Rev/uS? or uS/rev
+     * directly? ask teammates
+     */
+
+    uint32_t step_per_us =
+        RPM_TO_STEP_US(stepper_motor[mtr_index].current_rot_velocity);
+
+    /* Acceleration increment*/
+    /* Get how much to change this step time/freq by how much time elapsed since
+     *last accelaration increment */
+    uint32_t time_delta_us = micros() - stepper_motor[mtr_index].set_exec_time;
+
+    /*TODO, for very small increments (very slow accelaration), float may be
+     * needed for consistency, re calculated, we deffo need it*/
+    uint32_t accel_inc_us =
+        RPM_TO_STEP_US(stepper_motor[mtr_index].accel_rate) / time_delta_us;
+
+    /*Check if we can accelarate further, keeping in mind for leaving 1 accel
+     * increment of headroom from current velocity */
+    stepper_motor[mtr_index].set_exec_time = micros();
+
+    if ((step_per_us - accel_inc_us) >
+        RPM_TO_STEP_US(stepper_motor[mtr_index].max_rot_velocity)) {
+      stepper_motor[mtr_index].next_step_time =
+          stepper_motor[mtr_index].set_exec_time + (step_per_us - accel_inc_us);
+    } else {
+      stepper_motor[mtr_index].next_step_time =
+          stepper_motor[mtr_index].set_exec_time + step_per_us;
+    }
+
+    /*set toggle moment */
+    stepper_motor[mtr_index].step_toggle_time =
+        stepper_motor[mtr_index].set_exec_time + (step_per_us / 2);
+  }
+
+  /*poll for step pin toggle*/
+
+  if (micros() > stepper_motor[mtr_index].step_toggle_time) {
+    digitalWrite(stepper_motor[mtr_index].step_pulse_pin, HIGH);
+  } else {
+    digitalWrite(stepper_motor[mtr_index].step_pulse_pin, LOW);
+  }
+
+  /*TODO decelerate*/
 }
