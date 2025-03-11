@@ -1,7 +1,4 @@
-#include <Arduino.h>
-#include <PCF8574.h>
 #include <Wire.h>
-
 #include "MotorFunctions.cpp"
 
 // Define PCF8574 addresses

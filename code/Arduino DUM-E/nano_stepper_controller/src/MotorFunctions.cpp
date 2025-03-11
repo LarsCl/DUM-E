@@ -1,8 +1,6 @@
 #include "motorStruct.cpp"
-#include <Arduino.h>
 #include <stdlib.h>
 
-#ifndef __MOTOMOTO___
 
 
 #define DIR_PIN 7
@@ -119,6 +117,3 @@ void turnsimple(int motorindex, MotorConfig motors[])
     }
     delay(1000); // Pause
 }
-
-
-#endif
