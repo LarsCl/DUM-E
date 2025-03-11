@@ -2,6 +2,8 @@
 #include <PCF8574.h>
 #include <Wire.h>
 
+#include "MotorFunctions.cpp"
+
 // Define PCF8574 addresses
 #define PCF_COUNT 4
 
@@ -48,11 +50,7 @@
 
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
-// Gear ratios and stepcount
-static int SteppermotorGear = 18;
-static int BigPullyGear = 120;
-static int FullRotationStepCount = 200;
-static int DefaultSpeed = 500;
+
 
 const uint8_t step_pins[PCF_COUNT] = {STEP0_PIN, STEP1_PIN, STEP2_PIN,
                                       STEP3_PIN};
@@ -62,30 +60,6 @@ PCF8574 pcfs[PCF_COUNT] = {PCF8574(0x20, &Wire), PCF8574(0x21, &Wire),
                            PCF8574(0x22, &Wire), PCF8574(0x23, &Wire)};
 
 // Stepper Configuration
-struct MotorConfig {
-  /*Memory of motor vars*/
-  int position_setpoint;  // Target position in step pulses.
-  int current_position;   // Current step position
-
-  int max_rot_velocity;     // Maximum rotational velocity RPM
-  int current_rot_velocity; /**/
-
-  uint32_t next_step_time;
-  uint32_t set_exec_time;
-
-  int accel_rate;  // Acceleration rate
-
-  bool homed; /*Is this axis homed?*/
-
-  /*Motor ctrl info*/
-  uint8_t pcf_addr;
-  uint8_t step_pulse_pin;
-  /* Associated PCF of this unit*/
-  PCF8574 *unit_pcf;
-  uint8_t stepper_mode; /*0-5 defines microstepping config of DRV8825*/
-
-  /* Memory for control loop*/
-};
 
 MotorConfig stepper_motor[PCF_COUNT];
 
@@ -150,6 +124,8 @@ void setup() {
     stepper_motor[i].current_rot_velocity = 0;
     stepper_motor[i].accel_rate = DEFAULT_MAX_ROT_VEL;
     stepper_motor[i].homed = false;
+    stepper_motor[i].step_pulse_pin = step_pins[i];
+
 
     /*Test if PCF is OK*/
     if (!stepper_motor[i].unit_pcf->isConnected()) {
@@ -192,111 +168,7 @@ void loop() {
   //     moveMotorsSimultaneously();
 }
 
-// void moveMotorsSimultaneously()
-// {
-//     int maxSteps = 0;
-//     int allStepsRemaining[PCF_COUNT];
-//     for (int i = 0; i < PCF_COUNT; i++)
-//     {
-//         int stepsRemaining = abs(motors[i].position - motors[i].current_pos);
-//         allStepsRemaining[i] = stepsRemaining;
-//         if (stepsRemaining > maxSteps)
-//         {
-//             maxSteps = stepsRemaining;
-//         }
-//     }
 
-//     // for (int i = 0; i < PCF_COUNT; i++) {
-//     //     if(allStepsRemaining > 1){
-//     //       motors[i].speed = ((double)maxSteps * (double)DefaultSpeed) /
-//     (double)allStepsRemaining[i];
-//     //     }
-//     // }
-
-//     for (int step = 0; step < maxSteps; step++)
-//     {
-//         for (int i = 0; i < PCF_COUNT; i++)
-//         {
-//             int stepsRemaining = abs(motors[i].position -
-//             motors[i].current_pos); if (stepsRemaining > 0)
-//             {
-//                 // Set direction
-//                 if (motors[i].position > motors[i].current_pos)
-//                 {
-//                     pcf[i].write(DIR_PIN, HIGH);
-//                 }
-//                 else
-//                 {
-//                     pcf[i].write(DIR_PIN, LOW);
-//                 }
-
-//                 // Step the motor
-//                 digitalWrite(step_pins[i], HIGH);
-//                 delayMicroseconds(motors[i].speed);
-//                 digitalWrite(step_pins[i], LOW);
-//                 delayMicroseconds(motors[i].speed);
-
-//                 // Acceleration / Deceleration Handling
-//                 if (step < stepsRemaining / 3)
-//                 {
-//                     motors[i].speed -= motors[i].accel;
-//                 }
-//                 else if (step > (stepsRemaining - (stepsRemaining / 3)))
-//                 {
-//                     motors[i].speed += motors[i].decel;
-//                 }
-
-//                 // Update current position
-//                 motors[i].current_pos += (motors[i].position >
-//                 motors[i].current_pos) ? 1 : -1;
-//             }
-//         }
-//     }
-
-//     // Serial.println("All motors reached target positions.");
-// }
-
-// void calculateMotorPositions(double angle, double rotation)
-// {
-//     int gearRatio = FullRotationStepCount * (1 / 1 / 1);
-//     double stepsmotor1 = angle * (((BigPullyGear / SteppermotorGear) *
-//     gearRatio) / 360); double stepsmotor2 = 0 - stepsmotor1;
-
-//     double rotationsteps = rotation * (((BigPullyGear / SteppermotorGear) *
-//     gearRatio) / 360); motors[2].position = stepsmotor1 - rotationsteps;
-//     motors[3].position = stepsmotor2 - rotationsteps;
-//     Serial.print(motors[2].position);
-//     Serial.print(" ");
-//     Serial.print(motors[3].position);
-// }
-
-// void turnsimple(int motorindex)
-// {
-//     pcf[motorindex].write(DIR_PIN, HIGH); // Forward direction
-
-//     // Move the motor
-//     for (int i = 0; i < 100; i++)
-//     { // Adjust steps based on microstepping
-//         digitalWrite(step_pins[motorindex], HIGH);
-//         delay(1); // Speed control
-//         digitalWrite(step_pins[motorindex], LOW);
-//         delay(1);
-//     }
-
-//     delay(1000); // Pause
-
-//     // Change direction
-//     pcf[motorindex].write(DIR_PIN, LOW);
-
-//     for (int i = 0; i < 100; i++)
-//     {
-//         digitalWrite(step_pins[motorindex], HIGH);
-//         delay(1);
-//         digitalWrite(step_pins[motorindex], LOW);
-//         delay(1);
-//     }
-//     delay(1000); // Pause
-// }
 
 /*Enable the stepper driver*/
 void set_stepper_drive(MotorConfig *unit_config, bool on_off_value) {
