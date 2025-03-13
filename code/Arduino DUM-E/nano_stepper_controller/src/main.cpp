@@ -20,9 +20,9 @@
 
 // Step pins for each motor (ARDUINO)
 #define STEP0_PIN 2
-#define STEP1_PIN 3
+#define STEP1_PIN 5
 #define STEP2_PIN 4
-#define STEP3_PIN 5
+#define STEP3_PIN 3
 
 /* NANO PCBA nets*/
 #define SERVO0 8
@@ -53,8 +53,15 @@
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
 // Gear ratios and stepcount
-static int SteppermotorGear = 18;
-static int BigPullyGear = 120;
+static int SteppermotorGear = 20;
+static int BigPullyGear = 104;
+
+static int BaseBigGear = 365;
+static int BaseStepperGear = 16;
+
+static int bigGear = 40; 
+static int smallGear = 10;
+
 static int FullRotationStepCount = 200;
 static int DefaultSpeed = 500;
 
@@ -64,8 +71,8 @@ const uint8_t step_pins[PCF_COUNT] = {STEP0_PIN, STEP1_PIN, STEP2_PIN,
                                       STEP3_PIN};
 
 /*globalinorion PCF objects*/
-PCF8574 pcfs[PCF_COUNT] = {PCF8574(0x20, &Wire), PCF8574(0x21, &Wire),
-                           PCF8574(0x22, &Wire), PCF8574(0x23, &Wire)};
+PCF8574 pcfs[PCF_COUNT] = {PCF8574(0x23, &Wire), PCF8574(0x22, &Wire),
+                           PCF8574(0x21, &Wire), PCF8574(0x20, &Wire)};
 
 // Stepper Configuration
 struct MotorConfig {
@@ -167,13 +174,7 @@ void setup() {
     stepper_motor[i].step_pulse_pin = step_pins[i];
 
     /* Set initial PCF GPIO */
-    stepper_motor[i].unit_pcf->write(NEN_PIN, 0);
-    stepper_motor[i].unit_pcf->write(NSLP_PIN, 1);
-    stepper_motor[i].unit_pcf->write(NRST_PIN, 1);
-    stepper_motor[i].unit_pcf->write(DIR_PIN, 1);
-    stepper_motor[i].unit_pcf->write(M0_PIN, 0);
-    stepper_motor[i].unit_pcf->write(M1_PIN, 0);
-    stepper_motor[i].unit_pcf->write(M2_PIN, 0);
+
 
     /*Test if PCF is OK (reachable on I2C)*/
     if (!stepper_motor[i].unit_pcf->isConnected()) {
@@ -185,30 +186,46 @@ void setup() {
     /* TODO, this is for debug operation. This enables the motor and sets the
      * micro steppng to max */
     stepper_motor[i].unit_pcf->write8(0b11111111);
+
+    stepper_motor[i].unit_pcf->write(NEN_PIN, 0);
+    stepper_motor[i].unit_pcf->write(NSLP_PIN, 1);
+    stepper_motor[i].unit_pcf->write(NRST_PIN, 1);
+    stepper_motor[i].unit_pcf->write(DIR_PIN, 1);
+    stepper_motor[i].unit_pcf->write(M0_PIN, 0);
+    stepper_motor[i].unit_pcf->write(M1_PIN, 0);
+    stepper_motor[i].unit_pcf->write(M2_PIN, 0);
   }
+
+
+
+
 
   // BASIC MOTOR COMMAND "M P0d S500d A100d D100d P0d S500d A100d D100d P0d
   // S500d A100d D100d P0d S500d A100d D100d" Serial.println("All stepper motors
   // initialized!"); stepper_enable(&stepper_motor[2]);
 }
 
-void calculateMotorPositions(double angle, double rotation) {
+void calculateMotorPositions(double angle, double rotation, double baseAngle, MotorConfig *BaseStepperMotor) {
   int gearRatio = FullRotationStepCount * (1 / 1 / 1);
   double stepsmotor1 =
-      angle * (((BigPullyGear / SteppermotorGear) * gearRatio) / 360);
+      angle * ((((double)BigPullyGear / (double)SteppermotorGear) * gearRatio) / (double)360);
   double stepsmotor2 = 0 - stepsmotor1;
-
   double rotationsteps =
-      rotation * (((BigPullyGear / SteppermotorGear) * gearRatio) / 360);
+      rotation * ((((double)BigPullyGear / (double)SteppermotorGear) * gearRatio) / (double)360);
   stepper_motor[2].position_setpoint = stepsmotor1 - rotationsteps;
   stepper_motor[3].position_setpoint = stepsmotor2 - rotationsteps;
-  Serial.print(stepper_motor[2].position_setpoint);
-  Serial.print(" ");
-  Serial.println(stepper_motor[3].position_setpoint);
   stepper_motor[2].next_step_time =
       micros() + stepper_motor[2].max_rot_velocity;
   stepper_motor[3].next_step_time =
       micros() + stepper_motor[3].max_rot_velocity;
+
+  BaseStepperMotor->position_setpoint = ((double)BaseBigGear / (double)BaseStepperGear)* FullRotationStepCount / (double)360 * baseAngle;
+
+  Serial.print(stepper_motor[0].position_setpoint);
+  Serial.print(" ");
+  Serial.print(stepper_motor[2].position_setpoint);
+  Serial.print(" ");
+  Serial.println(stepper_motor[3].position_setpoint);
 }
 
 void moveMotorsSimultaneously() {
@@ -272,7 +289,7 @@ void movemotors() {
       // current position) is higher than distance needed to decelarate from
       // current velocity.
       stepper_motor[i].set_exec_time = micros();
-      stepper_motor[i].next_step_time = micros() + 2000;
+      stepper_motor[i].next_step_time = micros() + 1000;
       // Update current position
       stepper_motor[i].current_position += (stepper_motor[i].position_setpoint >
                                             stepper_motor[i].current_position)
@@ -284,11 +301,9 @@ void movemotors() {
           stepper_motor[i].set_exec_time + (stepper_motor[i].next_step_time -
                                             stepper_motor[i].set_exec_time) /
                                                2) {
-        // Serial.print("1");
         digitalWrite(step_pins[i], LOW);
       } else {
-        // Step the motor HIGH
-        // Serial.print("2");
+        //Step the motor HIGH
         digitalWrite(step_pins[i], HIGH);
       }
     }
@@ -298,26 +313,36 @@ void movemotors() {
 void loop() {
   // if(stepper_motor[2].current_position ==
   // stepper_motor[2].position_setpoint){
-  //     calculateMotorPositions(90,0);
-  // }
-
-  // stepper_motor[2].unit_pcf->write(DIR_PIN, HIGH);
-  // stepper_motor[1].unit_pcf->write(DIR_PIN, HIGH);
-  // for (int i = 0; i < 200; i++) {
-  //   digitalWrite(STEP2_PIN, 1);
-  //   delayMicroseconds(1000);
-  //   digitalWrite(STEP2_PIN, 0);
-  //   delayMicroseconds(1000);
-  // }
-  // stepper_motor[2].unit_pcf->write(DIR_PIN, LOW);
-  // stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
-  // for (int i = 0; i < 200; i++) {
-  //   digitalWrite(STEP2_PIN, 1);
-  //   delayMicroseconds(1000);
-  //   digitalWrite(STEP2_PIN, 0);
-  //   delayMicroseconds(1000);
+  //     calculateMotorPositions(0,90,90, &stepper_motor[0]);
   // }
   // movemotors();
+
+    stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
+    for (int i = 0; i < 400; i++)
+    { // Adjust steps based on microstepping
+        digitalWrite(STEP1_PIN, HIGH);
+        delayMicroseconds(1000); // Speed control
+        digitalWrite(STEP1_PIN, LOW);
+        delayMicroseconds(1000);
+    }
+
+    delay(5000); // Pause
+
+
+
+    // stepper_motor[2].unit_pcf->write(DIR_PIN, HIGH);
+    // stepper_motor[3].unit_pcf->write(DIR_PIN, HIGH);
+
+    // for (int i = 0; i < 1040; i++)
+    // {
+    //   digitalWrite(STEP2_PIN, HIGH);
+    //   digitalWrite(STEP3_PIN, HIGH);
+    //   delayMicroseconds(500); // Speed control
+    //   digitalWrite(STEP2_PIN, LOW);
+    //   digitalWrite(STEP3_PIN, LOW);
+    //   delayMicroseconds(500);
+    // }
+    // delay(5000); // Pause
 }
 
 /*Control the enable pin oft the stepper driver module*/
