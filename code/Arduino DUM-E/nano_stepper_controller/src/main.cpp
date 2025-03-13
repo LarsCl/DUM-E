@@ -54,7 +54,7 @@
 /* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
 #define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
 /* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
-#define DEFAULT_ROT_ACCEL 45 /*45RPM // 0.75 rev/min^2 */
+#define DEFAULT_ROT_ACCEL 145 /*45RPM // 0.75 rev/min^2 */
 
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
@@ -326,13 +326,16 @@ void loop() {
 
       /*Set stepsize to full*/
       set_stepper_stepsize(&stepper_motor[0], 0);
+
+      /* Trick the system into being HOMED*/
+      stepper_motor[0].homed = true;
       Serial.println("Cfg'd motor 0");
       testing_timer = millis();
       test_states++;
       break;
 
     case 1:
-      if (millis() - testing_timer > 500) {
+      if (millis() - testing_timer > 1000) {
         set_stepper_setpoint(&stepper_motor[0], 200);
         Serial.println("Set setpoint to 200 steps");
         testing_timer = millis();
@@ -343,12 +346,11 @@ void loop() {
 
     case 2:
 
-      if (millis() - testing_timer > 500) {
+      if (millis() - testing_timer > 1000) {
         motion_profiler(&stepper_motor[0]);
         Serial.println("Computed motion.");
         Serial.println("Time to grab the emergency STOP button...");
         Serial.println("Motor HOT in 3 sec.");
-
         testing_timer = millis();
         test_states++;
       }
@@ -373,10 +375,14 @@ void loop() {
         Serial.println("We've arrived.");
         testing_timer = millis();
         test_states++;
-      } else if (millis() - testing_timer > 3000) {
+      } else if (millis() - testing_timer > 30000) {
         set_stepper_block(&stepper_motor[0], 1);
         Serial.println("Movement error TIMEOUT");
         test_states++;
+      } else if (!(millis() % 300)) {
+        Serial.print("Current err: ");
+        Serial.println(stepper_motor[0].position_setpoint -
+                       stepper_motor[0].current_position);
       }
 
       break;
@@ -408,13 +414,16 @@ void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize) {
     return;
   }
   /* bit manipulation baybay*/
-  unit_config->unit_pcf->write(M0_PIN, (stepsize && 1));
-  unit_config->unit_pcf->write(M1_PIN, ((stepsize >> 1) && 1));
-  unit_config->unit_pcf->write(M2_PIN, ((stepsize >> 2) && 1));
+  unit_config->unit_pcf->write(M0_PIN, (stepsize & 1));
+  unit_config->unit_pcf->write(M1_PIN, ((stepsize >> 1) & 1));
+  unit_config->unit_pcf->write(M2_PIN, ((stepsize >> 2) & 1));
 }
 
-void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {}
+void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
+  unit_config->position_setpoint = setpointpulse;
+}
 
+/*TODO fix some of these to use correct units*/
 void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
   /*Beware for too high acceleration rates*/
   unit_config->accel_rate = accelerate;
@@ -435,7 +444,7 @@ void motion_profiler(MotorConfig *unit_config) {
   if (steperror > 0) {
     unit_config->unit_pcf->write(unit_config->step_pulse_pin, 1);
   } else {
-    stepper_motor->unit_pcf->write(stepper_motor->step_pulse_pin, 0);
+    unit_config->unit_pcf->write(stepper_motor->step_pulse_pin, 0);
   }
 
   steperror = abs(steperror);
@@ -463,16 +472,18 @@ void motion_profiler(MotorConfig *unit_config) {
    */
 
   /*Although this is for decel*/
-  float rate_constant = (1 + (unit_config->accel_rate / 60000000.0f));
+  float rate_constant = (1 + (unit_config->accel_rate / 1000000.0f));
   unit_config->rate_constant = rate_constant;
 
   /*Check how many steps until max velocity is reached*/
   /* Assuming we're moving from standstill to max velocity */
   /* round off LOWER */
-  int ramp_steps = (int)((log(unit_config->current_rot_velocity /
-                              unit_config->max_rot_velocity) /
-                          log(rate_constant)) -
-                         0.5f);
+  int ramp_steps = (int)(log(unit_config->current_rot_velocity /
+                             unit_config->max_rot_velocity) /
+                         log(rate_constant));
+
+  Serial.print("Ramp is ");
+  Serial.println(ramp_steps);
 
   /*Check if 2*ramp is < error */
   if (2 * ramp_steps < steperror) {
@@ -481,11 +492,10 @@ void motion_profiler(MotorConfig *unit_config) {
     unit_config->decel_from = ramp_steps;
   } else {
     /*We wont.*/
-    if (steperror %= 2) {
+    if (steperror % 2) {
       /*UNEVEN, we'll allow 1 step cruising for this to be even*/
       unit_config->accel_until = steperror - ((steperror - 1) / 2);
       unit_config->decel_from = (steperror - 1) / 2;
-
     } else {
       unit_config->accel_until = steperror / 2;
       unit_config->decel_from = steperror / 2;
@@ -498,7 +508,6 @@ void motion_profiler(MotorConfig *unit_config) {
   Serial.println(unit_config->accel_until);
   Serial.print("Will decelerate from: ");
   Serial.println(unit_config->decel_from);
-  
 }
 
 void stepper_control_loop() {
@@ -540,14 +549,14 @@ void stepper_control_loop() {
   if (stepper_motor[mtr_index].block_control) {
     // Serial.println("This unit is blocked, skipping");
     mtr_index++;
-    mtr_index %= (PCF_COUNT + 1);
+    mtr_index %= (PCF_COUNT);
     return;
   }
 
   if (!stepper_motor[mtr_index].homed) {
     // Serial.println("This unit isnt homed, skipping");
     mtr_index++;
-    mtr_index %= (PCF_COUNT + 1);
+    mtr_index %= (PCF_COUNT);
     return;
   }
 
@@ -559,7 +568,7 @@ void stepper_control_loop() {
   if (pos_error == 0) {
     Serial.println("Is on SP.");
     mtr_index++;
-    mtr_index %= (PCF_COUNT + 1);
+    mtr_index %= (PCF_COUNT);
     return;
   }
 
@@ -577,12 +586,12 @@ void stepper_control_loop() {
     pos_error = abs(pos_error);
 
     /*Check if we should be accelerating or decelerating*/
-    if (pos_error >= stepper_motor[mtr_index].accel_until) {
+    if (pos_error > stepper_motor[mtr_index].accel_until) {
       /*Increase velocity*/
       stepper_motor[mtr_index].current_rot_velocity *=
           (1.0f / stepper_motor[mtr_index].rate_constant);
 
-    } else if (pos_error < stepper_motor[mtr_index].decel_from) {
+    } else if (pos_error <= stepper_motor[mtr_index].decel_from) {
       /*decrease velocity*/
       stepper_motor[mtr_index].current_rot_velocity *=
           stepper_motor[mtr_index].rate_constant;
