@@ -59,8 +59,8 @@ static int BigPullyGear = 104;
 static int BaseBigGear = 365;
 static int BaseStepperGear = 16;
 
-static int bigGear = 40; 
-static int smallGear = 10;
+static int RotationBigGear = 40; 
+static int RotationSmallGear = 10;
 
 static int FullRotationStepCount = 200;
 static int DefaultSpeed = 500;
@@ -118,6 +118,8 @@ void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse);
 void set_stepper_rate(MotorConfig *unit_config, int accelrate);
 /* Change max velocity of motor */
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity);
+
+void calculateMotorPositions(double baseAngle, double rotation, double endRotation, double endAngle, MotorConfig *BaseStepperMotor, MotorConfig *RotationStepperMotor, MotorConfig *LeftEndStepperMotor, MotorConfig *RightEndStepperMotor);
 
 /* Polling function that controls pulses, calculates when the next pulse should
  * be when a step is done.
@@ -195,6 +197,8 @@ void setup() {
     stepper_motor[i].unit_pcf->write(M1_PIN, 0);
     stepper_motor[i].unit_pcf->write(M2_PIN, 0);
   }
+  //move to initial position
+  calculateMotorPositions(0,0,-90,0, &stepper_motor[0],&stepper_motor[1],&stepper_motor[2],&stepper_motor[3]);
 
 
 
@@ -205,23 +209,31 @@ void setup() {
   // initialized!"); stepper_enable(&stepper_motor[2]);
 }
 
-void calculateMotorPositions(double angle, double rotation, double baseAngle, MotorConfig *BaseStepperMotor) {
+void calculateMotorPositions(double baseAngle, double rotation, double endRotation, double endAngle, MotorConfig *BaseStepperMotor, MotorConfig *RotationStepperMotor, MotorConfig *LeftEndStepperMotor, MotorConfig *RightEndStepperMotor) {
+  
+  //calculate the end motor positions
   int gearRatio = FullRotationStepCount * (1 / 1 / 1);
   double stepsmotor1 =
-      angle * ((((double)BigPullyGear / (double)SteppermotorGear) * gearRatio) / (double)360);
+  endAngle * ((((double)BigPullyGear / (double)SteppermotorGear) * gearRatio) / (double)360);
   double stepsmotor2 = 0 - stepsmotor1;
   double rotationsteps =
-      rotation * ((((double)BigPullyGear / (double)SteppermotorGear) * gearRatio) / (double)360);
-  stepper_motor[2].position_setpoint = stepsmotor1 - rotationsteps;
-  stepper_motor[3].position_setpoint = stepsmotor2 - rotationsteps;
-  stepper_motor[2].next_step_time =
-      micros() + stepper_motor[2].max_rot_velocity;
-  stepper_motor[3].next_step_time =
-      micros() + stepper_motor[3].max_rot_velocity;
+  endRotation * ((((double)BigPullyGear / (double)SteppermotorGear) * gearRatio) / (double)360);
+      LeftEndStepperMotor->position_setpoint = stepsmotor1 - rotationsteps;
+      RightEndStepperMotor->position_setpoint = stepsmotor2 - rotationsteps;
+  LeftEndStepperMotor->next_step_time =
+      micros() + LeftEndStepperMotor->max_rot_velocity;
+      RightEndStepperMotor->next_step_time =
+      micros() + RightEndStepperMotor->max_rot_velocity;
 
+  //calculate the base motor steps
   BaseStepperMotor->position_setpoint = ((double)BaseBigGear / (double)BaseStepperGear)* FullRotationStepCount / (double)360 * baseAngle;
 
+  //calculate the rotation motor steps
+  RotationStepperMotor->position_setpoint = ((double)RotationBigGear / (double)RotationSmallGear)* FullRotationStepCount / (double)360 * rotation;
+
   Serial.print(stepper_motor[0].position_setpoint);
+  Serial.print(" ");
+  Serial.print(stepper_motor[1].position_setpoint);
   Serial.print(" ");
   Serial.print(stepper_motor[2].position_setpoint);
   Serial.print(" ");
@@ -310,23 +322,44 @@ void movemotors() {
   }
 }
 
+void parseSerialCommand() {
+  String command = Serial.readStringUntil('\n');  // Read command
+  command.trim();  // Remove whitespace
+
+  if (command.length() == 0 || command.charAt(0) != 'M') return;
+
+  int params[PCF_COUNT * 4]; // Stores P, S, A, D for each motor
+
+  int matched = sscanf(command.c_str(), "M BA%d R%d ER%d EA%d",
+      &params[0], &params[1], &params[2], &params[3]);
+
+  if (matched == 4) {
+      calculateMotorPositions(params[0],params[1],params[2],params[3], &stepper_motor[0],&stepper_motor[1],&stepper_motor[2],&stepper_motor[3]);
+  } else {
+      Serial.println("Invalid command format!");
+  }
+}
+
 void loop() {
   // if(stepper_motor[2].current_position ==
   // stepper_motor[2].position_setpoint){
-  //     calculateMotorPositions(0,90,90, &stepper_motor[0]);
+  //      calculateMotorPositions(0,0,90,0, &stepper_motor[0],&stepper_motor[1],&stepper_motor[2],&stepper_motor[3]);
   // }
-  // movemotors();
+  if (Serial.available()) {
+    parseSerialCommand();
+  }
+  movemotors();
 
-    stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
-    for (int i = 0; i < 400; i++)
-    { // Adjust steps based on microstepping
-        digitalWrite(STEP1_PIN, HIGH);
-        delayMicroseconds(1000); // Speed control
-        digitalWrite(STEP1_PIN, LOW);
-        delayMicroseconds(1000);
-    }
+    // stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
+    // for (int i = 0; i < 400; i++)
+    // { // Adjust steps based on microstepping
+    //     digitalWrite(STEP1_PIN, HIGH);
+    //     delayMicroseconds(1000); // Speed control
+    //     digitalWrite(STEP1_PIN, LOW);
+    //     delayMicroseconds(1000);
+    // }
 
-    delay(5000); // Pause
+    // delay(5000); // Pause
 
 
 
