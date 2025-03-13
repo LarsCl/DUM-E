@@ -491,6 +491,14 @@ void motion_profiler(MotorConfig *unit_config) {
       unit_config->decel_from = steperror / 2;
     }
   }
+
+  Serial.print("Error is: ");
+  Serial.println(steperror);
+  Serial.print("Will accelerate until: ");
+  Serial.println(unit_config->accel_until);
+  Serial.print("Will decelerate from: ");
+  Serial.println(unit_config->decel_from);
+  
 }
 
 void stepper_control_loop() {
