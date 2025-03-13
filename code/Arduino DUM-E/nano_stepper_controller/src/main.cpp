@@ -39,11 +39,17 @@
 #define ANALOG7 7
 
 /* Is (60*10^6)/ (RPM * 200), returns uS per rotation */
+/* Works RPM -> STEP uS and vice versa/*/
 #define RPM_TO_STEP_US(x) (0x3938700 / (x * 200))
+#define RPM_TO_STEP_US_FLT(x) (60000000.0f / (x * 200.0f))
+
+/* As we have 'infinite' resolution, we need to define a MINIMUM and MAXIMUM
+ * STEP PERIOD TIME. Otherwisea RPM of 0 equals infinite period time.*/
+#define STEPPER_MIN_RPM 1
 
 /* Frequency of stepper control loop in Hertz */
-#define CL_FREQ 1000
-#define CL_PERIOD_US (0xF4240 / CL_FREQ)
+// #define CL_FREQ 1000
+// #define CL_PERIOD_US (0xF4240 / CL_FREQ)
 
 /* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
 #define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
@@ -73,16 +79,22 @@ struct MotorConfig {
   int position_setpoint;  // Target position in step pulses.
   int current_position;   // Current step position
 
-  int max_rot_velocity; /* Maximum rotational velocity in RPM used to limit */
-  int current_rot_velocity; /* Current velocity in RPM*/
-  int accel_rate;           // Acceleration rate
+  float max_rot_velocity; /* Holds minimum step period time in uS. cruise vel*/
+  float current_rot_velocity; /* Current velocity in step period time in uS*/
+  float accel_rate;           /*Accel/Decel rate modifier in uS per motor step*/
 
-  /* A scale to slow accel and velocity for synchronous movement of axes*/
-  float movement_speed_scale;
-
+  /* Memory for motor driver */
   uint32_t next_step_time;
   uint32_t step_toggle_time;
   uint32_t set_exec_time;
+  /* A scale to slow accel and velocity for synchronous movement of axes*/
+  float movement_speed_scale;
+
+  /* Memory for movement profiler */
+
+  uint16_t accel_until; /*Accel until x steps*/
+  uint16_t decel_from;  /*Start decel from x steps*/
+  float rate_constant;
 
   bool homed;         /*Is this axis homed?*/
   bool block_control; /* Flag to software block driving this motor. true is
@@ -111,6 +123,8 @@ void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse);
 void set_stepper_rate(MotorConfig *unit_config, int accelrate);
 /* Change max velocity of motor */
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity);
+
+void motion_profiler(MotorConfig *unit_config);
 
 /* Polling function that controls pulses, calculates when the next pulse should
  * be when a step is done.
@@ -158,10 +172,15 @@ void setup() {
     /*Assign initial values*/
     stepper_motor[i].position_setpoint = 0;
     stepper_motor[i].current_position = 0;
-    stepper_motor[i].max_rot_velocity = DEFAULT_MAX_ROT_VEL;
-    stepper_motor[i].current_rot_velocity = 0;
-    stepper_motor[i].accel_rate = DEFAULT_MAX_ROT_VEL;
+    stepper_motor[i].max_rot_velocity = RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL);
+    stepper_motor[i].current_rot_velocity = RPM_TO_STEP_US_FLT(STEPPER_MIN_RPM);
+    stepper_motor[i].accel_rate = RPM_TO_STEP_US_FLT(DEFAULT_ROT_ACCEL);
     stepper_motor[i].movement_speed_scale = 1.0f;
+
+    stepper_motor[i].accel_until = 0;
+    stepper_motor[i].decel_from = 0;
+    stepper_motor[i].rate_constant = 0;
+
     stepper_motor[i].homed = false;
     stepper_motor[i].block_control = true;
     stepper_motor[i].step_pulse_pin = step_pins[i];
@@ -296,33 +315,91 @@ void movemotors() {
 }
 
 void loop() {
-  // if(stepper_motor[2].current_position ==
-  // stepper_motor[2].position_setpoint){
-  //     calculateMotorPositions(90,0);
-  // }
+  static int test_states;
+  static uint32_t testing_timer;
 
-  // stepper_motor[2].unit_pcf->write(DIR_PIN, HIGH);
-  // stepper_motor[1].unit_pcf->write(DIR_PIN, HIGH);
-  // for (int i = 0; i < 200; i++) {
-  //   digitalWrite(STEP2_PIN, 1);
-  //   delayMicroseconds(1000);
-  //   digitalWrite(STEP2_PIN, 0);
-  //   delayMicroseconds(1000);
-  // }
-  // stepper_motor[2].unit_pcf->write(DIR_PIN, LOW);
-  // stepper_motor[1].unit_pcf->write(DIR_PIN, LOW);
-  // for (int i = 0; i < 200; i++) {
-  //   digitalWrite(STEP2_PIN, 1);
-  //   delayMicroseconds(1000);
-  //   digitalWrite(STEP2_PIN, 0);
-  //   delayMicroseconds(1000);
-  // }
-  // movemotors();
+  switch (test_states) {
+    case 0:
+      /*Enable hardware, but block SW control*/
+      set_stepper_block(&stepper_motor[0], 1);
+      set_stepper_drive(&stepper_motor[0], 1);
+
+      /*Set stepsize to full*/
+      set_stepper_stepsize(&stepper_motor[0], 0);
+      Serial.println("Cfg'd motor 0");
+      testing_timer = millis();
+      test_states++;
+      break;
+
+    case 1:
+      if (millis() - testing_timer > 500) {
+        set_stepper_setpoint(&stepper_motor[0], 200);
+        Serial.println("Set setpoint to 200 steps");
+        testing_timer = millis();
+        test_states++;
+      }
+
+      break;
+
+    case 2:
+
+      if (millis() - testing_timer > 500) {
+        motion_profiler(&stepper_motor[0]);
+        Serial.println("Computed motion.");
+        Serial.println("Time to grab the emergency STOP button...");
+        Serial.println("Motor HOT in 3 sec.");
+
+        testing_timer = millis();
+        test_states++;
+      }
+      break;
+
+    case 3:
+
+      if (millis() - testing_timer > 3000) {
+        set_stepper_block(&stepper_motor[0], 0);
+        Serial.println("Moving");
+        testing_timer = millis();
+        test_states++;
+      }
+
+      break;
+
+    case 4:
+
+      if ((stepper_motor[0].position_setpoint -
+           stepper_motor[0].current_position) == 0) {
+        set_stepper_block(&stepper_motor[0], 1);
+        Serial.println("We've arrived.");
+        testing_timer = millis();
+        test_states++;
+      } else if (millis() - testing_timer > 3000) {
+        set_stepper_block(&stepper_motor[0], 1);
+        Serial.println("Movement error TIMEOUT");
+        test_states++;
+      }
+
+      break;
+
+    case 5:
+      /*Nothing*/
+      break;
+
+    default:
+      break;
+  }
+
+  /*constant polling*/
+  stepper_control_loop();
 }
 
 /*Control the enable pin oft the stepper driver module*/
 void set_stepper_drive(MotorConfig *unit_config, bool on_off_value) {
   unit_config->unit_pcf->write(NEN_PIN, 0);
+}
+
+void set_stepper_block(MotorConfig *unit_config, bool on_off_value) {
+  unit_config->block_control = on_off_value;
 }
 
 void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize) {
@@ -345,6 +422,75 @@ void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
 
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
   unit_config->max_rot_velocity = maxvelocity;
+}
+
+/*Compute one-time knowledge for driver. Movement accel/decel profile from a
+ * startpoint up to end point.*/
+void motion_profiler(MotorConfig *unit_config) {
+  int steperror =
+      unit_config->position_setpoint - unit_config->current_position;
+
+  /*Set the direction pin of unit*/
+  /*set direction of movement*/
+  if (steperror > 0) {
+    unit_config->unit_pcf->write(unit_config->step_pulse_pin, 1);
+  } else {
+    stepper_motor->unit_pcf->write(stepper_motor->step_pulse_pin, 0);
+  }
+
+  steperror = abs(steperror);
+
+  /* Error goes from x until 0 as motor moves.*/
+
+  /*Our formula for calculating NEXT period time when decel per step is as:
+   * periodtime = prevStepPer_uS + ((prevStepPer_uS*6666)/10^6)
+   * Tn+1= Tn+(Tn*6666us/10^6)
+   * Factor Tn
+   * Tn*(1+(6666uS/10^6))
+   * Make (1+(6666uS/10^6)) constant k
+   * k = 1.006666
+   * for acceleration we need its inverse thus 1/k, not 1-k.
+   *
+   * Generalizing this for a formula to know how many steps we will need
+   * to accelarate for until we reach max velocity or ramp down
+   * Period of a step from a given point goes as:
+   * Tn = T_0 * k^n
+   * As as we want
+   * Stop period = T_0 * k^n
+   * We want n
+   * k^n = T_stop/T_0
+   * n = log(T_stop/T_0)/log(k)
+   */
+
+  /*Although this is for decel*/
+  float rate_constant = (1 + (unit_config->accel_rate / 60000000.0f));
+  unit_config->rate_constant = rate_constant;
+
+  /*Check how many steps until max velocity is reached*/
+  /* Assuming we're moving from standstill to max velocity */
+  /* round off LOWER */
+  int ramp_steps = (int)((log(unit_config->current_rot_velocity /
+                              unit_config->max_rot_velocity) /
+                          log(rate_constant)) -
+                         0.5f);
+
+  /*Check if 2*ramp is < error */
+  if (2 * ramp_steps < steperror) {
+    /*We will reach cruising speed*/
+    unit_config->accel_until = steperror - ramp_steps;
+    unit_config->decel_from = ramp_steps;
+  } else {
+    /*We wont.*/
+    if (steperror %= 2) {
+      /*UNEVEN, we'll allow 1 step cruising for this to be even*/
+      unit_config->accel_until = steperror - ((steperror - 1) / 2);
+      unit_config->decel_from = (steperror - 1) / 2;
+
+    } else {
+      unit_config->accel_until = steperror / 2;
+      unit_config->decel_from = steperror / 2;
+    }
+  }
 }
 
 void stepper_control_loop() {
@@ -411,62 +557,47 @@ void stepper_control_loop() {
 
   /* A step elapsed, time to set next time goal*/
   if (micros() >= stepper_motor[mtr_index].next_step_time) {
-    /*set direction of movement*/
-    if (pos_error > 0) {
-      stepper_motor[mtr_index].unit_pcf->write(
-          stepper_motor[mtr_index].step_pulse_pin, 1);
-    } else {
-      stepper_motor[mtr_index].unit_pcf->write(
-          stepper_motor[mtr_index].step_pulse_pin, 0);
-    }
-
-    /*calculate current step period time from velocity  */
-    /* uS per rotation is (60*10^6)/rpm
-     * and (uS/Rev)/200 = step period in uS, TODO, autoadjust with microstep
-     * setting  */
-
-    /*TODO, maybe using Rev/M was a bad idea, why not use Rev/uS? or uS/rev
-     * directly? ask teammates
-     */
-
-    uint32_t step_per_us =
-        RPM_TO_STEP_US(stepper_motor[mtr_index].current_rot_velocity);
-
-    /* Acceleration increment*/
-    /* Get how much to change this step time/freq by how much time elapsed since
-     *last accelaration increment */
-    uint32_t time_delta_us = micros() - stepper_motor[mtr_index].set_exec_time;
-
-    /*TODO, for very small increments (very slow accelaration), float may be
-     * needed for consistency, re calculated, we deffo need it*/
-    uint32_t accel_inc_us =
-        RPM_TO_STEP_US(stepper_motor[mtr_index].accel_rate) / time_delta_us;
-
-    /*Check if we can accelarate further, keeping in mind for leaving 1 accel
-     * increment of headroom from current velocity */
+    /*capture execution time*/
     stepper_motor[mtr_index].set_exec_time = micros();
-
-    if ((step_per_us - accel_inc_us) >
-        RPM_TO_STEP_US(stepper_motor[mtr_index].max_rot_velocity)) {
-      stepper_motor[mtr_index].next_step_time =
-          stepper_motor[mtr_index].set_exec_time + (step_per_us - accel_inc_us);
+    /*increment pos*/
+    if (pos_error > 0) {
+      stepper_motor[mtr_index].current_position++;
     } else {
-      stepper_motor[mtr_index].next_step_time =
-          stepper_motor[mtr_index].set_exec_time + step_per_us;
+      stepper_motor[mtr_index].current_position--;
     }
+
+    pos_error = abs(pos_error);
+
+    /*Check if we should be accelerating or decelerating*/
+    if (pos_error >= stepper_motor[mtr_index].accel_until) {
+      /*Increase velocity*/
+      stepper_motor[mtr_index].current_rot_velocity *=
+          (1.0f / stepper_motor[mtr_index].rate_constant);
+
+    } else if (pos_error < stepper_motor[mtr_index].decel_from) {
+      /*decrease velocity*/
+      stepper_motor[mtr_index].current_rot_velocity *=
+          stepper_motor[mtr_index].rate_constant;
+    }
+
+    /*Set when the step ends*/
+    stepper_motor[mtr_index].next_step_time =
+        stepper_motor[mtr_index].set_exec_time +
+        (uint32_t)stepper_motor[mtr_index].current_rot_velocity;
 
     /*set toggle moment */
     stepper_motor[mtr_index].step_toggle_time =
-        stepper_motor[mtr_index].set_exec_time + (step_per_us / 2);
+        stepper_motor[mtr_index].set_exec_time +
+        ((uint32_t)stepper_motor[mtr_index].current_rot_velocity / 2);
   }
 
   /*poll for step pin toggle*/
-
   if (micros() > stepper_motor[mtr_index].step_toggle_time) {
     digitalWrite(stepper_motor[mtr_index].step_pulse_pin, HIGH);
   } else {
     digitalWrite(stepper_motor[mtr_index].step_pulse_pin, LOW);
   }
 
-  /*TODO decelerate*/
+  mtr_index++;
+  mtr_index %= (PCF_COUNT + 1);
 }
