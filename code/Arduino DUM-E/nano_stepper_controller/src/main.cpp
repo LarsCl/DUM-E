@@ -54,7 +54,7 @@
 /* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
 #define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
 /* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
-#define DEFAULT_ROT_ACCEL 145 /*45RPM // 0.75 rev/min^2 */
+#define DEFAULT_ROT_ACCEL 10 /*45RPM // 0.75 rev/min^2 */
 
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
@@ -375,7 +375,7 @@ void loop() {
         Serial.println("We've arrived.");
         testing_timer = millis();
         test_states++;
-      } else if (millis() - testing_timer > 30000) {
+      } else if (millis() - testing_timer > 40000) {
         set_stepper_block(&stepper_motor[0], 1);
         Serial.println("Movement error TIMEOUT");
         test_states++;
@@ -383,6 +383,8 @@ void loop() {
         Serial.print("Current err: ");
         Serial.println(stepper_motor[0].position_setpoint -
                        stepper_motor[0].current_position);
+        Serial.print("Period time uS: ");
+        Serial.println(stepper_motor[0].current_rot_velocity);
       }
 
       break;
