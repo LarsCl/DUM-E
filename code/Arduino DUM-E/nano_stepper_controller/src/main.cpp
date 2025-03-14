@@ -54,7 +54,7 @@
 /* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
 #define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
 /* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
-#define DEFAULT_ROT_ACCEL 10 /*45RPM // 0.75 rev/min^2 */
+#define DEFAULT_ROT_ACCEL 45 /*45RPM // 0.75 rev/min^2 */
 
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
@@ -336,7 +336,7 @@ void loop() {
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        set_stepper_setpoint(&stepper_motor[0], 200);
+        set_stepper_setpoint(&stepper_motor[0], 2000);
         Serial.println("Set setpoint to 200 steps");
         testing_timer = millis();
         test_states++;
@@ -390,7 +390,62 @@ void loop() {
       break;
 
     case 5:
-      /*Nothing*/
+      if (millis() - testing_timer > 1000) {
+        set_stepper_setpoint(&stepper_motor[0], 0);
+        Serial.println("Set setpoint to 0 steps");
+        testing_timer = millis();
+        test_states++;
+      }
+
+      break;
+
+    case 6:
+      if (millis() - testing_timer > 1000) {
+        motion_profiler(&stepper_motor[0]);
+        Serial.println("Computed motion.");
+        Serial.println("Time to grab the emergency STOP button...");
+        Serial.println("Motor HOT in 3 sec.");
+        testing_timer = millis();
+        test_states++;
+      }
+      break;
+
+    case 7:
+
+      if (millis() - testing_timer > 3000) {
+        set_stepper_block(&stepper_motor[0], 0);
+        Serial.println("Moving");
+        testing_timer = millis();
+        test_states++;
+      }
+
+      break;
+
+    case 8:
+      if ((stepper_motor[0].position_setpoint -
+           stepper_motor[0].current_position) == 0) {
+        set_stepper_block(&stepper_motor[0], 1);
+        Serial.println("We've arrived.");
+        testing_timer = millis();
+        test_states++;
+      } else if (millis() - testing_timer > 40000) {
+        set_stepper_block(&stepper_motor[0], 1);
+        Serial.println("Movement error TIMEOUT");
+        test_states++;
+      } else if (!(millis() % 300)) {
+        Serial.print("Current err: ");
+        Serial.println(stepper_motor[0].position_setpoint -
+                       stepper_motor[0].current_position);
+        Serial.print("Period time uS: ");
+        Serial.println(stepper_motor[0].current_rot_velocity);
+      }
+
+      break;
+
+    case 9:
+
+      Serial.println("Reloop");
+      test_states = 0;
       break;
 
     default:
@@ -425,10 +480,10 @@ void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
   unit_config->position_setpoint = setpointpulse;
 }
 
-/*TODO fix some of these to use correct units*/
+/*Set stepper acceleration profile, unit in RPM*/
 void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
   /*Beware for too high acceleration rates*/
-  unit_config->accel_rate = accelerate;
+  unit_config->accel_rate = RPM_TO_STEP_US_FLT(accelerate);
 }
 
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
