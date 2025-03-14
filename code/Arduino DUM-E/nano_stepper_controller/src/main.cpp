@@ -20,9 +20,9 @@
 
 // Step pins for each motor (ARDUINO)
 #define STEP0_PIN 2
-#define STEP1_PIN 3
+#define STEP1_PIN 5
 #define STEP2_PIN 4
-#define STEP3_PIN 5
+#define STEP3_PIN 3
 
 /* NANO PCBA nets*/
 #define SERVO0 8
@@ -66,8 +66,8 @@ static int DefaultSpeed = 500;
 
 long timer = 0;
 
-const uint8_t step_pins[PCF_COUNT] = {STEP0_PIN, STEP1_PIN, STEP2_PIN,
-                                      STEP3_PIN};
+const uint8_t step_pins[PCF_COUNT] = {STEP3_PIN, STEP2_PIN, STEP1_PIN,
+                                      STEP0_PIN};
 
 /*globalinorion PCF objects*/
 PCF8574 pcfs[PCF_COUNT] = {PCF8574(0x20, &Wire), PCF8574(0x21, &Wire),
@@ -322,20 +322,20 @@ void movemotors() {
 void loop() {
   static int test_states;
   static uint32_t testing_timer;
-#define TESTAXES 1
+#define TESTAXES 0
   switch (test_states) {
     case 0:
-      if (millis() - testing_timer > 1000) {
+      if (millis() - testing_timer > 2000) {
         /*Enable hardware, but block SW control*/
         set_stepper_block(&stepper_motor[TESTAXES], 1);
-        set_stepper_drive(&stepper_motor[TESTAXES], 0);
+        set_stepper_drive(&stepper_motor[TESTAXES], 1);
         set_stepper_sleep(&stepper_motor[TESTAXES], 0);
 
         // stepper_motor[i].unit_pcf->write(NSLP_PIN, 1); /*0 is sleeping*/
         // stepper_motor[i].unit_pcf->write(NRST_PIN, 1); /*0 is reseting*/
 
         /*Set stepsize to full*/
-        // set_stepper_stepsize(&stepper_motor[TESTAXES], 5);
+        set_stepper_stepsize(&stepper_motor[TESTAXES], 3);
         // stepper_motor[TESTAXES].unit_pcf->write(M0_PIN, 1);
         // stepper_motor[TESTAXES].unit_pcf->write(M1_PIN, 1);
         // stepper_motor[TESTAXES].unit_pcf->write(M2_PIN, 1);
@@ -345,13 +345,13 @@ void loop() {
         Serial.print("Cfg'd motor ");
         Serial.println(TESTAXES);
         testing_timer = millis();
-        // test_states++;
+        test_states++;
       }
       break;
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        set_stepper_setpoint(&stepper_motor[TESTAXES], 200);
+        set_stepper_setpoint(&stepper_motor[TESTAXES], 2000);
         Serial.println("Set setpoint to 200 steps");
         testing_timer = millis();
         test_states++;
@@ -394,13 +394,14 @@ void loop() {
         set_stepper_block(&stepper_motor[TESTAXES], 1);
         Serial.println("Movement error TIMEOUT");
         test_states++;
-      } else if (!(millis() % 300)) {
-        Serial.print("Current err: ");
-        Serial.println(stepper_motor[TESTAXES].position_setpoint -
-                       stepper_motor[TESTAXES].current_position);
-        Serial.print("Period time uS: ");
-        Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
-      }
+      } 
+      // else if (!(millis() % 300)) {
+      //   // Serial.print("Current err: ");
+      //   // Serial.println(stepper_motor[TESTAXES].position_setpoint -
+      //   //                stepper_motor[TESTAXES].current_position);
+      //   // Serial.print("Period time uS: ");
+      //   // Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
+      // }
 
       break;
 
@@ -496,9 +497,16 @@ void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize) {
     return;
   }
   /* bit manipulation baybay*/
+  unit_config->stepper_mode = stepsize;
   unit_config->unit_pcf->write(M0_PIN, (stepsize & 1));
   unit_config->unit_pcf->write(M1_PIN, ((stepsize >> 1) & 1));
   unit_config->unit_pcf->write(M2_PIN, ((stepsize >> 2) & 1));
+  Serial.print("M0 is: ");
+  Serial.print((stepsize & 1));
+  Serial.print("M1 is: ");
+  Serial.print(((stepsize >> 1) & 1));
+  Serial.print("M2s is: ");
+  Serial.println(((stepsize >> 2) & 1));
 }
 
 void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
@@ -526,14 +534,16 @@ void motion_profiler(MotorConfig *unit_config) {
 
   /*Set the direction pin of unit*/
   /*set direction of movement*/
-  if (steperror < 0) {
-    unit_config->unit_pcf->write(DIR_PIN, 0);
-  } else {
+  if (steperror > 0) {
     unit_config->unit_pcf->write(DIR_PIN, 1);
+    Serial.println("Set dir to 1");
+  } else {
+    unit_config->unit_pcf->write(DIR_PIN, 0);
+    Serial.println("Set dir to 0");
   }
 
-  steperror = abs(steperror);
-
+  // steperror = abs(steperror);
+  int abserror = abs(steperror);
   /* Error goes from x until 0 as motor moves.*/
 
   /*Our formula for calculating NEXT period time when decel per step is as:
@@ -571,19 +581,19 @@ void motion_profiler(MotorConfig *unit_config) {
   Serial.println(ramp_steps);
 
   /*Check if 2*ramp is < error */
-  if (2 * ramp_steps < steperror) {
+  if (2 * ramp_steps < abserror) {
     /*We will reach cruising speed*/
-    unit_config->accel_until = steperror - ramp_steps;
+    unit_config->accel_until = abserror - ramp_steps;
     unit_config->decel_from = ramp_steps;
   } else {
     /*We wont.*/
-    if (steperror % 2) {
+    if (abserror % 2) {
       /*UNEVEN, we'll allow 1 step cruising for this to be even*/
-      unit_config->accel_until = steperror - ((steperror - 1) / 2);
-      unit_config->decel_from = (steperror - 1) / 2;
+      unit_config->accel_until = abserror - ((abserror - 1) / 2);
+      unit_config->decel_from = (abserror - 1) / 2;
     } else {
-      unit_config->accel_until = steperror / 2;
-      unit_config->decel_from = steperror / 2;
+      unit_config->accel_until = abserror / 2;
+      unit_config->decel_from = abserror / 2;
     }
   }
 
@@ -654,6 +664,11 @@ void stepper_control_loop() {
     mtr_index %= (PCF_COUNT);
     return;
   }
+
+  // Serial.print("Driving unit; ");
+  // Serial.print(mtr_index);
+  // Serial.print(" Which is pin ; ");
+  // Serial.println(stepper_motor[mtr_index].step_pulse_pin);
 
   /* A step elapsed, time to set next time goal*/
   if (micros() >= stepper_motor[mtr_index].next_step_time) {
