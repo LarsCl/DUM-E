@@ -54,7 +54,7 @@
 /* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
 #define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
 /* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
-#define DEFAULT_ROT_ACCEL 45 /*45RPM // 0.75 rev/min^2 */
+#define DEFAULT_ROT_ACCEL 15 /*45RPM // 0.75 rev/min^2 */
 
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
@@ -98,7 +98,7 @@ struct MotorConfig {
 
   bool homed;         /*Is this axis homed?*/
   bool block_control; /* Flag to software block driving this motor. true is
-                         blocking*/
+  blocking*/
 
   /*Motor ctrl info*/
   uint8_t pcf_addr;
@@ -114,6 +114,8 @@ MotorConfig stepper_motor[PCF_COUNT];
 void set_stepper_drive(MotorConfig *unit_config, bool onoffvalue);
 /* Software block driving of a specific motor*/
 void set_stepper_block(MotorConfig *unit_config, bool onoffvalue);
+/* Eep. */
+void set_stepper_sleep(MotorConfig *unit_config, bool on_off_value);
 
 /* 0 is fullstep, 1 is 1/2, 2 is 1/4, 3 is 1/8, 4 is 1/16, 5 is 1/32 */
 void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize);
@@ -123,6 +125,8 @@ void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse);
 void set_stepper_rate(MotorConfig *unit_config, int accelrate);
 /* Change max velocity of motor */
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity);
+
+// bool check_faults(MotorConfig *unit_config);
 
 void motion_profiler(MotorConfig *unit_config);
 
@@ -186,13 +190,13 @@ void setup() {
     stepper_motor[i].step_pulse_pin = step_pins[i];
 
     /* Set initial PCF GPIO */
-    stepper_motor[i].unit_pcf->write(NEN_PIN, 0);
-    stepper_motor[i].unit_pcf->write(NSLP_PIN, 1);
-    stepper_motor[i].unit_pcf->write(NRST_PIN, 1);
+    stepper_motor[i].unit_pcf->write(NEN_PIN, 1);  /*1 is disabled*/
+    stepper_motor[i].unit_pcf->write(NSLP_PIN, 0); /*0 is sleeping*/
+    stepper_motor[i].unit_pcf->write(NRST_PIN, 0); /*0 is reseting*/
     stepper_motor[i].unit_pcf->write(DIR_PIN, 1);
-    stepper_motor[i].unit_pcf->write(M0_PIN, 0);
-    stepper_motor[i].unit_pcf->write(M1_PIN, 0);
-    stepper_motor[i].unit_pcf->write(M2_PIN, 0);
+    stepper_motor[i].unit_pcf->write(M0_PIN, 0); /*fullstep*/
+    stepper_motor[i].unit_pcf->write(M1_PIN, 0); /*fullstep*/
+    stepper_motor[i].unit_pcf->write(M2_PIN, 0); /*fullstep*/
 
     /*Test if PCF is OK (reachable on I2C)*/
     if (!stepper_motor[i].unit_pcf->isConnected()) {
@@ -203,7 +207,8 @@ void setup() {
 
     /* TODO, this is for debug operation. This enables the motor and sets the
      * micro steppng to max */
-    stepper_motor[i].unit_pcf->write8(0b11111111);
+    // stepper_motor[i].unit_pcf->write8(0b11111111);
+    // stepper_motor[i].unit_pcf->write8(0b11111111);
   }
 
   // BASIC MOTOR COMMAND "M P0d S500d A100d D100d P0d S500d A100d D100d P0d
@@ -317,26 +322,36 @@ void movemotors() {
 void loop() {
   static int test_states;
   static uint32_t testing_timer;
-
+#define TESTAXES 1
   switch (test_states) {
     case 0:
-      /*Enable hardware, but block SW control*/
-      set_stepper_block(&stepper_motor[0], 1);
-      set_stepper_drive(&stepper_motor[0], 1);
+      if (millis() - testing_timer > 1000) {
+        /*Enable hardware, but block SW control*/
+        set_stepper_block(&stepper_motor[TESTAXES], 1);
+        set_stepper_drive(&stepper_motor[TESTAXES], 0);
+        set_stepper_sleep(&stepper_motor[TESTAXES], 0);
 
-      /*Set stepsize to full*/
-      set_stepper_stepsize(&stepper_motor[0], 0);
+        // stepper_motor[i].unit_pcf->write(NSLP_PIN, 1); /*0 is sleeping*/
+        // stepper_motor[i].unit_pcf->write(NRST_PIN, 1); /*0 is reseting*/
 
-      /* Trick the system into being HOMED*/
-      stepper_motor[0].homed = true;
-      Serial.println("Cfg'd motor 0");
-      testing_timer = millis();
-      test_states++;
+        /*Set stepsize to full*/
+        // set_stepper_stepsize(&stepper_motor[TESTAXES], 5);
+        // stepper_motor[TESTAXES].unit_pcf->write(M0_PIN, 1);
+        // stepper_motor[TESTAXES].unit_pcf->write(M1_PIN, 1);
+        // stepper_motor[TESTAXES].unit_pcf->write(M2_PIN, 1);
+
+        /* Trick the system into being HOMED*/
+        stepper_motor[TESTAXES].homed = true;
+        Serial.print("Cfg'd motor ");
+        Serial.println(TESTAXES);
+        testing_timer = millis();
+        // test_states++;
+      }
       break;
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        set_stepper_setpoint(&stepper_motor[0], 2000);
+        set_stepper_setpoint(&stepper_motor[TESTAXES], 200);
         Serial.println("Set setpoint to 200 steps");
         testing_timer = millis();
         test_states++;
@@ -347,7 +362,7 @@ void loop() {
     case 2:
 
       if (millis() - testing_timer > 1000) {
-        motion_profiler(&stepper_motor[0]);
+        motion_profiler(&stepper_motor[TESTAXES]);
         Serial.println("Computed motion.");
         Serial.println("Time to grab the emergency STOP button...");
         Serial.println("Motor HOT in 3 sec.");
@@ -359,7 +374,7 @@ void loop() {
     case 3:
 
       if (millis() - testing_timer > 3000) {
-        set_stepper_block(&stepper_motor[0], 0);
+        set_stepper_block(&stepper_motor[TESTAXES], 0);
         Serial.println("Moving");
         testing_timer = millis();
         test_states++;
@@ -369,29 +384,29 @@ void loop() {
 
     case 4:
 
-      if ((stepper_motor[0].position_setpoint -
-           stepper_motor[0].current_position) == 0) {
-        set_stepper_block(&stepper_motor[0], 1);
+      if ((stepper_motor[TESTAXES].position_setpoint -
+           stepper_motor[TESTAXES].current_position) == 0) {
+        set_stepper_block(&stepper_motor[TESTAXES], 1);
         Serial.println("We've arrived.");
         testing_timer = millis();
         test_states++;
       } else if (millis() - testing_timer > 40000) {
-        set_stepper_block(&stepper_motor[0], 1);
+        set_stepper_block(&stepper_motor[TESTAXES], 1);
         Serial.println("Movement error TIMEOUT");
         test_states++;
       } else if (!(millis() % 300)) {
         Serial.print("Current err: ");
-        Serial.println(stepper_motor[0].position_setpoint -
-                       stepper_motor[0].current_position);
+        Serial.println(stepper_motor[TESTAXES].position_setpoint -
+                       stepper_motor[TESTAXES].current_position);
         Serial.print("Period time uS: ");
-        Serial.println(stepper_motor[0].current_rot_velocity);
+        Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
       }
 
       break;
 
     case 5:
       if (millis() - testing_timer > 1000) {
-        set_stepper_setpoint(&stepper_motor[0], 0);
+        set_stepper_setpoint(&stepper_motor[TESTAXES], 0);
         Serial.println("Set setpoint to 0 steps");
         testing_timer = millis();
         test_states++;
@@ -401,7 +416,7 @@ void loop() {
 
     case 6:
       if (millis() - testing_timer > 1000) {
-        motion_profiler(&stepper_motor[0]);
+        motion_profiler(&stepper_motor[TESTAXES]);
         Serial.println("Computed motion.");
         Serial.println("Time to grab the emergency STOP button...");
         Serial.println("Motor HOT in 3 sec.");
@@ -413,7 +428,7 @@ void loop() {
     case 7:
 
       if (millis() - testing_timer > 3000) {
-        set_stepper_block(&stepper_motor[0], 0);
+        set_stepper_block(&stepper_motor[TESTAXES], 0);
         Serial.println("Moving");
         testing_timer = millis();
         test_states++;
@@ -422,22 +437,22 @@ void loop() {
       break;
 
     case 8:
-      if ((stepper_motor[0].position_setpoint -
-           stepper_motor[0].current_position) == 0) {
-        set_stepper_block(&stepper_motor[0], 1);
+      if ((stepper_motor[TESTAXES].position_setpoint -
+           stepper_motor[TESTAXES].current_position) == 0) {
+        set_stepper_block(&stepper_motor[TESTAXES], 1);
         Serial.println("We've arrived.");
         testing_timer = millis();
         test_states++;
       } else if (millis() - testing_timer > 40000) {
-        set_stepper_block(&stepper_motor[0], 1);
+        set_stepper_block(&stepper_motor[TESTAXES], 1);
         Serial.println("Movement error TIMEOUT");
         test_states++;
       } else if (!(millis() % 300)) {
         Serial.print("Current err: ");
-        Serial.println(stepper_motor[0].position_setpoint -
-                       stepper_motor[0].current_position);
+        Serial.println(stepper_motor[TESTAXES].position_setpoint -
+                       stepper_motor[TESTAXES].current_position);
         Serial.print("Period time uS: ");
-        Serial.println(stepper_motor[0].current_rot_velocity);
+        Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
       }
 
       break;
@@ -446,6 +461,10 @@ void loop() {
 
       Serial.println("Reloop");
       test_states = 0;
+      break;
+
+    case 10:
+
       break;
 
     default:
@@ -458,7 +477,13 @@ void loop() {
 
 /*Control the enable pin oft the stepper driver module*/
 void set_stepper_drive(MotorConfig *unit_config, bool on_off_value) {
-  unit_config->unit_pcf->write(NEN_PIN, 0);
+  unit_config->unit_pcf->write(NEN_PIN, !on_off_value);
+}
+
+/*Set to sleep and reset of unit*/
+void set_stepper_sleep(MotorConfig *unit_config, bool on_off_value) {
+  unit_config->unit_pcf->write(NSLP_PIN, !on_off_value);
+  unit_config->unit_pcf->write(NRST_PIN, !on_off_value);
 }
 
 void set_stepper_block(MotorConfig *unit_config, bool on_off_value) {
@@ -496,12 +521,15 @@ void motion_profiler(MotorConfig *unit_config) {
   int steperror =
       unit_config->position_setpoint - unit_config->current_position;
 
+  Serial.print("Error is: ");
+  Serial.println(steperror);
+
   /*Set the direction pin of unit*/
   /*set direction of movement*/
-  if (steperror > 0) {
-    unit_config->unit_pcf->write(unit_config->step_pulse_pin, 1);
+  if (steperror < 0) {
+    unit_config->unit_pcf->write(DIR_PIN, 0);
   } else {
-    unit_config->unit_pcf->write(stepper_motor->step_pulse_pin, 0);
+    unit_config->unit_pcf->write(DIR_PIN, 1);
   }
 
   steperror = abs(steperror);
@@ -559,8 +587,6 @@ void motion_profiler(MotorConfig *unit_config) {
     }
   }
 
-  Serial.print("Error is: ");
-  Serial.println(steperror);
   Serial.print("Will accelerate until: ");
   Serial.println(unit_config->accel_until);
   Serial.print("Will decelerate from: ");
