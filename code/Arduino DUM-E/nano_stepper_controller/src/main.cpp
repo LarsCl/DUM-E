@@ -40,12 +40,12 @@
 
 /* Is (60*10^6)/ (RPM * 200), returns uS per rotation */
 /* Works RPM -> STEP uS and vice versa/*/
-#define RPM_TO_STEP_US(x) (0x3938700 / (x * 200))
+// #define RPM_TO_STEP_US(x) (0x3938700 / (x * 200))
 #define RPM_TO_STEP_US_FLT(x) (600000.0f / (x * 2.0f))
 #define RPM_TO_STEP_US_SQRD(x) (600000000000.0 / (x * 2.0))
 /* As we have 'infinite' resolution, we need to define a MINIMUM and MAXIMUM
  * STEP PERIOD TIME. Otherwisea RPM of 0 equals infinite period time.*/
-#define STEPPER_MIN_RPM 0.5
+// #define STEPPER_MIN_RPM 10
 
 /* Frequency of stepper control loop in Hertz */
 // #define CL_FREQ 1000
@@ -54,10 +54,10 @@
 /* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
 #define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
 /* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
-#define DEFAULT_ROT_ACCEL 100 /*45RPM // 0.75 rev/min^2 */
+#define DEFAULT_ROT_ACCEL 45 /*45RPM // 0.75 rev/min^2 */
 
 #define TESTAXES 0
-#define SETPOINTTEST 1000
+#define SETPOINTTEST 200
 
 #define DEFAULT_DRV8825_MODE 0 /*fullstep*/
 
@@ -82,19 +82,19 @@ struct MotorConfig {
   int position_setpoint;  // Target position in step pulses.
   int current_position;   // Current step position
 
-  float max_rot_velocity; /* Holds minimum step period time in uS. cruise vel*/
-  float current_rot_velocity; /* Current velocity in step period time in uS*/
-  double accel_rate;          /*Accel/Decel rate modifier in uS per motor step*/
+  double accel_rate; /*Accel/Decel rate modifier in uS per motor step*/
+  float accel_sqrt; /* sqrt(Taccel) for convenient/fast calcs */
+  float max_rot_velocity; /* Holds minimum step period time in uS. */
+  float min_rot_velocity; /* Calculated from accel value, Tmax < sqrt(Taccel)*/
+  float current_rot_velocity;
 
   /* Memory for motor driver */
   uint32_t next_step_time;
   uint32_t step_toggle_time;
   uint32_t set_exec_time;
-  /* A scale to slow accel and velocity for synchronous movement of axes*/
-  float movement_speed_scale;
+  float movement_speed_scale; /* For the synchonizer, movement vel scale*/
 
   /* Memory for movement profiler */
-
   uint32_t accel_dowto; /*Accel until x steps*/
   uint32_t decel_from;  /*Start decel from x steps*/
 
@@ -179,11 +179,14 @@ void setup() {
     /*Assign initial values*/
     stepper_motor[i].position_setpoint = 0;
     stepper_motor[i].current_position = 0;
+
+    stepper_motor[i].accel_rate = RPM_TO_STEP_US_SQRD(DEFAULT_ROT_ACCEL);
+    stepper_motor[i].accel_sqrt = sqrt(stepper_motor[i].accel_rate);
+
     stepper_motor[i].max_rot_velocity =
         (float)RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL);
-    stepper_motor[i].current_rot_velocity =
-        (float)RPM_TO_STEP_US_FLT(STEPPER_MIN_RPM);
-    stepper_motor[i].accel_rate = RPM_TO_STEP_US_SQRD(DEFAULT_ROT_ACCEL);
+    stepper_motor[i].min_rot_velocity = stepper_motor[i].accel_sqrt - 1.0;
+    stepper_motor[i].current_rot_velocity = stepper_motor[i].min_rot_velocity;
 
     stepper_motor[i].next_step_time = 0;
     stepper_motor[i].step_toggle_time = 0;
@@ -328,27 +331,16 @@ void loop() {
     case 0:
       if (millis() - testing_timer > 2000) {
         /*Enable hardware, but block SW control*/
-        set_stepper_block(&stepper_motor[TESTAXES], 1);
-        set_stepper_drive(&stepper_motor[TESTAXES], 1);
-        set_stepper_sleep(&stepper_motor[TESTAXES], 0);
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_block(&stepper_motor[i], 1);
+          set_stepper_drive(&stepper_motor[i], 1);
+          set_stepper_sleep(&stepper_motor[i], 0);
+          set_stepper_stepsize(&stepper_motor[i], 0);
+          stepper_motor[i].homed = true;
+          Serial.print("Cfg'd motor: ");
+          Serial.println(i);
+        }
 
-        set_stepper_block(&stepper_motor[TESTAXES + 1], 1);
-        set_stepper_drive(&stepper_motor[TESTAXES + 1], 1);
-        set_stepper_sleep(&stepper_motor[TESTAXES + 1], 0);
-
-        /*Set stepsize to full*/
-        set_stepper_stepsize(&stepper_motor[TESTAXES], 1);
-        set_stepper_stepsize(&stepper_motor[TESTAXES + 1], 1);
-        // stepper_motor[TESTAXES].unit_pcf->write(M0_PIN, 1);
-        // stepper_motor[TESTAXES].unit_pcf->write(M1_PIN, 1);
-        // stepper_motor[TESTAXES].unit_pcf->write(M2_PIN, 1);
-
-        /* Trick the system into being HOMED*/
-        stepper_motor[TESTAXES].homed = true;
-        stepper_motor[TESTAXES + 1].homed = true;
-
-        Serial.print("Cfg'd motor ");
-        Serial.println(TESTAXES);
         testing_timer = millis();
         test_states++;
       }
@@ -356,35 +348,42 @@ void loop() {
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        set_stepper_setpoint(&stepper_motor[TESTAXES], -SETPOINTTEST);
-        set_stepper_setpoint(&stepper_motor[TESTAXES + 1], -SETPOINTTEST);
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_setpoint(&stepper_motor[i], -SETPOINTTEST);
+        }
+
         Serial.print("Set setpoint to ");
         Serial.print(-SETPOINTTEST);
         Serial.println(" steps");
         testing_timer = millis();
         test_states++;
       }
-
       break;
 
     case 2:
 
       if (millis() - testing_timer > 1000) {
-        motion_profiler(&stepper_motor[TESTAXES]);
-        motion_profiler(&stepper_motor[TESTAXES + 1]);
-        Serial.println("Computed motion.");
+        for (int i = 0; i < PCF_COUNT; i++) {
+          motion_profiler(&stepper_motor[i]);
+          Serial.print("Computed motion for ");
+          Serial.println(i);
+        }
+
         Serial.println("Time to grab the emergency STOP button...");
         Serial.println("Motor HOT in 1 sec.");
         testing_timer = millis();
         test_states++;
       }
+
       break;
 
     case 3:
 
       if (millis() - testing_timer > 1000) {
-        set_stepper_block(&stepper_motor[TESTAXES], 0);
-        set_stepper_block(&stepper_motor[TESTAXES + 1], 0);
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_block(&stepper_motor[i], 0);
+        }
+
         Serial.println("Moving");
         testing_timer = millis();
         test_states++;
@@ -394,34 +393,46 @@ void loop() {
 
     case 4:
 
-      if (stepper_motor[TESTAXES].on_sp && stepper_motor[TESTAXES + 1].on_sp) {
-        set_stepper_block(&stepper_motor[TESTAXES], 1);
-        set_stepper_block(&stepper_motor[TESTAXES + 1], 1);
+      if (!(millis() % 300)) {
+        Serial.print("Current err: ");
+        Serial.println(stepper_motor[TESTAXES].position_setpoint -
+                       stepper_motor[TESTAXES].current_position);
+        Serial.print("Period time uS: ");
+        Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
+
+        Serial.println(stepper_motor[1].current_rot_velocity);
+
+        Serial.print("SP0 ");
+        Serial.print(stepper_motor[0].on_sp);
+        Serial.print(" SP 1");
+        Serial.print(stepper_motor[1].on_sp);
+        Serial.print(" SP 2");
+        Serial.print(stepper_motor[2].on_sp);
+        Serial.print(" SP 3");
+        Serial.println(stepper_motor[3].on_sp);
+      }
+
+      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_block(&stepper_motor[i], 1);
+        }
+
         Serial.println("We've arrived.");
         Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
         testing_timer = millis();
         test_states++;
-      }
-      // else if (millis() - testing_timer > 40000) {
-      //   // set_stepper_block(&stepper_motor[TESTAXES], 1);
-      //   // set_stepper_block(&stepper_motor[1], 1);
-      //   Serial.println("Movement error TIMEOUT");
-      //   // test_states++;
-      // }
-      else if (!(millis() % 500)) {
-        // Serial.print("Current err: ");
-        // Serial.println(stepper_motor[TESTAXES].position_setpoint -
-        //                stepper_motor[TESTAXES].current_position);
-        // Serial.print("Period time uS: ");
-        // Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
       }
 
       break;
 
     case 5:
       if (millis() - testing_timer > 1000) {
-        set_stepper_setpoint(&stepper_motor[TESTAXES], SETPOINTTEST);
-        set_stepper_setpoint(&stepper_motor[TESTAXES + 1], SETPOINTTEST);
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_setpoint(&stepper_motor[i], SETPOINTTEST);
+        }
+
+        // set_stepper_setpoint(&stepper_motor[TESTAXES + 1], SETPOINTTEST);
         Serial.print("Set setpoint to ");
         Serial.print(SETPOINTTEST);
         Serial.println(" steps");
@@ -433,8 +444,9 @@ void loop() {
 
     case 6:
       if (millis() - testing_timer > 1) {
-        motion_profiler(&stepper_motor[TESTAXES]);
-        motion_profiler(&stepper_motor[TESTAXES + 1]);
+        for (int i = 0; i < PCF_COUNT; i++) {
+          motion_profiler(&stepper_motor[i]);
+        }
         Serial.println("Computed motion.");
         Serial.println("Time to grab the emergency STOP button...");
         Serial.println("Motor HOT in 0 sec.");
@@ -446,8 +458,9 @@ void loop() {
     case 7:
 
       if (millis() - testing_timer > 1) {
-        set_stepper_block(&stepper_motor[TESTAXES], 0);
-        set_stepper_block(&stepper_motor[TESTAXES + 1], 0);
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_block(&stepper_motor[i], 0);
+        }
         Serial.println("Moving");
         testing_timer = millis();
         test_states++;
@@ -456,27 +469,35 @@ void loop() {
       break;
 
     case 8:
-      if (stepper_motor[TESTAXES].on_sp && stepper_motor[TESTAXES + 1].on_sp) {
-        set_stepper_block(&stepper_motor[TESTAXES], 1);
-        set_stepper_block(&stepper_motor[TESTAXES + 1], 1);
+
+      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
         Serial.println("We've arrived.");
         Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
         testing_timer = millis();
         test_states++;
+
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_block(&stepper_motor[i], 1);
+        }
       }
-      // else if (millis() - testing_timer > 40000) {
-      //   // set_stepper_block(&stepper_motor[TESTAXES], 1);
-      //   // set_stepper_block(&stepper_motor[1], 1);
-      //   Serial.println("Movement error TIMEOUT");
-      //   // test_states++;
-      // }
-      else if (!(millis() % 300)) {
-        // Serial.print("Current err: ");
-        // Serial.println(stepper_motor[TESTAXES].position_setpoint -
-        //                stepper_motor[TESTAXES].current_position);
-        // Serial.print("Period time uS: ");
-        // Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
-        // Serial.println(stepper_motor[1].current_rot_velocity);
+
+      if (!(millis() % 300)) {
+        Serial.print("Current err: ");
+        Serial.println(stepper_motor[TESTAXES].position_setpoint -
+                       stepper_motor[TESTAXES].current_position);
+        Serial.print("Period time uS: ");
+        Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
+        Serial.println(stepper_motor[1].current_rot_velocity);
+
+        Serial.print("SP0");
+        Serial.print(stepper_motor[0].on_sp);
+        Serial.print(" SP1");
+        Serial.print(stepper_motor[1].on_sp);
+        Serial.print(" SP2");
+        Serial.print(stepper_motor[2].on_sp);
+        Serial.print(" SP3");
+        Serial.println(stepper_motor[3].on_sp);
       }
 
       break;
@@ -526,24 +547,33 @@ void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize) {
   unit_config->unit_pcf->write(M2_PIN, ((stepsize >> 2) & 1));
   Serial.print("M0 is: ");
   Serial.print((stepsize & 1));
-  Serial.print("M1 is: ");
+  Serial.print(" M1 is: ");
   Serial.print(((stepsize >> 1) & 1));
-  Serial.print("M2s is: ");
+  Serial.print(" M2s is: ");
   Serial.println(((stepsize >> 2) & 1));
 }
 
 void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
   unit_config->position_setpoint = setpointpulse;
+
+  /* Update whether on SP immidiately*/
+  int pos_error =
+      (unit_config->position_setpoint - unit_config->current_position);
+  if (pos_error == 0) {
+    unit_config->on_sp = true;
+  } else {
+    unit_config->on_sp = false;
+  }
 }
 
 /*Set stepper acceleration profile, unit in RPM*/
 void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
   /*Beware for too high acceleration rates*/
-  unit_config->accel_rate = RPM_TO_STEP_US_FLT(accelerate);
+  unit_config->accel_rate = RPM_TO_STEP_US_SQRD(accelerate);
 }
 
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
-  unit_config->max_rot_velocity = maxvelocity;
+  unit_config->max_rot_velocity = RPM_TO_STEP_US_FLT(maxvelocity);
 }
 
 /*Compute one-time knowledge for driver. Movement accel/decel profile from a
@@ -567,19 +597,34 @@ void motion_profiler(MotorConfig *unit_config) {
 
   // steperror = abs(steperror);
   uint32_t abserror = (uint32_t)abs(steperror);
-  /* Error goes from x until 0 as motor moves.*/
 
+  /* Deceleration equation yapping below:
+   *
+   * Acceleration as we know it : a = (Vf - V0)/t_delta
+   * We accelerate the frequency ; f = f_0+a*t
+   * As we accelerate per period, t = prev pulse period time, f_0 is current
+   * velocity in period time. And we want the next period time. So
+   * 1/Tn+1 = (1/Tn) + a*Tn
+   * T_(n+1) = 1/ (1/((1/Tn)+a*t))
+   * T_(n+1) = 1/((1/Tn)+(Tn/Tacc))
+   * Finally: T_(n+1) = (Tn*Tacc)/(Tn^2 + Tacc);
+   * Above is for acceleration, for decelaration, its  (Tn*Tacc)/(Tn^2 - Tacc);
+   * But beware, deceleration only works while Tn < sqrd(Tacc)
+   * Which is ok mostly, just make sure to clip the period time between these.
+   *
+   * This implies,  sqrd(Tacc) - 1 is out minimum speed using this eq.
+   */
+
+  /* Error goes from x until 0 as motor moves.*/
   uint16_t ramp_steps = 0;
   uint16_t max_iter = 5000;
-  float sim_period = RPM_TO_STEP_US_FLT(STEPPER_MIN_RPM);
+  unit_config->accel_sqrt = sqrt(unit_config->accel_rate);
+  unit_config->min_rot_velocity = unit_config->accel_sqrt - 1;
 
-  /*Deceleration validity*/
-  /*Formula valid when Tstep < sqrt(Taccel)*/
-  if (sim_period >= sqrt(unit_config->accel_rate)) {
-    Serial.println("Invalid accelval/min rpm");
-    }
-  sim_period = sqrt(unit_config->accel_rate) + 1;
-  unit_config->current_rot_velocity = sim_period;
+  Serial.print("minT");
+  Serial.println(unit_config->min_rot_velocity);
+
+  float sim_period = unit_config->min_rot_velocity;
 
   /* 5000 is max iteration*/
 
@@ -606,8 +651,8 @@ void motion_profiler(MotorConfig *unit_config) {
     /*We wont. accel and decel vals can't be the same!!*/
     if (abserror % 2) {
       /*UNEVEN, we'll allow 1 step cruising for this to be even*/
-      unit_config->accel_dowto = (abserror + 1) / 2;
-      unit_config->decel_from = abserror - unit_config->accel_dowto;
+      unit_config->accel_dowto = ((abserror + 1) / 2) + 1;
+      unit_config->decel_from = ((abserror + 1) / 2) - 1;
     } else {
       unit_config->accel_dowto = (abserror / 2) + 1;
       unit_config->decel_from = abserror / 2;
@@ -662,8 +707,8 @@ void stepper_control_loop() {
   if (pos_error == 0) {
     // Serial.println("Is on SP.");
     stepper_motor[mtr_index].on_sp = true;
-    // stepper_motor[mtr_index].current_rot_velocity =
-    //     RPM_TO_STEP_US_FLT(STEPPER_MIN_RPM);
+    stepper_motor[mtr_index].current_rot_velocity =
+        stepper_motor[mtr_index].min_rot_velocity;
   } else {
     stepper_motor[mtr_index].on_sp = false;
   }
@@ -683,11 +728,6 @@ void stepper_control_loop() {
   }
 
   /* We check if there is a position error*/
-
-  // Serial.print("Driving unit; ");
-  // Serial.print(mtr_index);
-  // Serial.print(" Which is pin ; ");
-  // Serial.println(stepper_motor[mtr_index].step_pulse_pin);
 
   /* A step elapsed, time to set next time goal*/
   if (micros() >= stepper_motor[mtr_index].next_step_time) {
@@ -713,13 +753,17 @@ void stepper_control_loop() {
             stepper_motor[mtr_index].current_rot_velocity));
 
     } else if (pos_error <= stepper_motor[mtr_index].decel_from) {
-      /*decrease velocity*/
-      stepper_motor[mtr_index].current_rot_velocity =
-          (stepper_motor[mtr_index].current_rot_velocity *
-           stepper_motor[mtr_index].accel_rate) /
-          (stepper_motor[mtr_index].accel_rate -
-           (stepper_motor[mtr_index].current_rot_velocity *
-            stepper_motor[mtr_index].current_rot_velocity));
+      // /*decrease velocity*/
+      float newper = (stepper_motor[mtr_index].current_rot_velocity *
+                      stepper_motor[mtr_index].accel_rate) /
+                     (stepper_motor[mtr_index].accel_rate -
+                      (stepper_motor[mtr_index].current_rot_velocity *
+                       stepper_motor[mtr_index].current_rot_velocity));
+
+      /*Limit / clip*/
+      if ((stepper_motor[mtr_index].min_rot_velocity + 1) > newper) {
+        stepper_motor[mtr_index].current_rot_velocity = newper;
+      }
     }
 
     /*Set when the step ends*/
@@ -741,5 +785,5 @@ void stepper_control_loop() {
   }
 
   mtr_index++;
-  mtr_index %= (PCF_COUNT + 1);
+  mtr_index %= (PCF_COUNT);
 }
