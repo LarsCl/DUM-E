@@ -104,6 +104,7 @@ struct MotorConfig {
   /* Memory for movement profiler */
   uint32_t accel_dowto; /*Accel until x steps*/
   uint32_t decel_from;  /*Start decel from x steps*/
+  uint32_t maneuver_time;
 
   bool on_sp;         /*on setpoint flag*/
   bool homed;         /*Is this axis homed?*/
@@ -157,6 +158,10 @@ void motion_profiler(MotorConfig *unit_config);
 /*Configures system speed scale for motors from current to setpoint positions,
  * also sets setpoints. Angles are in deca degrees. 180 => 1800*/
 void apply_pose(uint16_t wanted_pose[PCF_COUNT]);
+
+/* Looks at how long a movement takes with default values of a device, and slow
+ * it down until they all approximately match.*/
+void synchromizer();
 
 /* Polling function that controls pulses, calculates when the next pulse
  * should be when a step is done.
@@ -222,6 +227,7 @@ void setup() {
 
     stepper_motor[i].accel_dowto = 0;
     stepper_motor[i].decel_from = 0;
+    stepper_motor[i].maneuver_time = 0; /*in us*/
 
     stepper_motor[i].on_sp = true;
     stepper_motor[i].homed = false;
@@ -362,7 +368,7 @@ void loop() {
           set_stepper_drive(&stepper_motor[i], 1);
           set_stepper_sleep(&stepper_motor[i], 0);
 
-          set_stepper_stepsize(&stepper_motor[i], 1);
+          set_stepper_stepsize(&stepper_motor[i], 2);
 
           set_stepper_rate(&stepper_motor[i], 60);
           set_stepper_velocity(&stepper_motor[i], 120);
@@ -373,8 +379,8 @@ void loop() {
         }
 
         /*Reduce accel vlas of one*/
-        set_stepper_rate(&stepper_motor[0], 30);
-        set_stepper_velocity(&stepper_motor[0], 60);
+        // set_stepper_rate(&stepper_motor[0], 30);
+        // set_stepper_velocity(&stepper_motor[0], 60);
 
         testing_timer = millis();
         test_states++;
@@ -384,11 +390,11 @@ void loop() {
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {2700, 2700, 2700, 2700};
+        uint16_t motor_angles[] = {0, 0, 0, 0};
 
         apply_pose(motor_angles);
 
-        Serial.print("Applied angles");
+        // Serial.print("Applied angles");
         testing_timer = millis();
         test_states++;
       }
@@ -464,7 +470,7 @@ void loop() {
 
     case 5:
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {1800, 900, 900, 900};
+        uint16_t motor_angles[] = {900, 1800, 2700, 3600};
 
         apply_pose(motor_angles);
 
@@ -635,10 +641,10 @@ void motion_profiler(MotorConfig *unit_config) {
   /*set direction of movement*/
   if (steperror > 0) {
     unit_config->unit_pcf->write(DIR_PIN, 1);
-    Serial.println("Set dir to 1");
+    // Serial.println("Set dir to 1");
   } else {
     unit_config->unit_pcf->write(DIR_PIN, 0);
-    Serial.println("Set dir to 0");
+    // Serial.println("Set dir to 0");
   }
 
   // steperror = abs(steperror);
@@ -667,8 +673,8 @@ void motion_profiler(MotorConfig *unit_config) {
   unit_config->accel_sqrt = sqrt(unit_config->accel_rate);
   unit_config->min_rot_velocity = unit_config->accel_sqrt - 1;
 
-  Serial.print("minT: ");
-  Serial.println(unit_config->min_rot_velocity);
+  // Serial.print("minT: ");
+  // Serial.println(unit_config->min_rot_velocity);
 
   float sim_period = unit_config->min_rot_velocity;
 
@@ -685,14 +691,20 @@ void motion_profiler(MotorConfig *unit_config) {
     }
   }
 
-  Serial.print("Ramp is ");
-  Serial.println(ramp_steps);
+  // Serial.print("Ramp is ");
+  // Serial.println(ramp_steps);
 
   /*Check if 2*ramp is < error */
   if (abserror > (uint32_t)(2 * ramp_steps)) {
     /*We will reach cruising speed*/
     unit_config->accel_dowto = abserror - ramp_steps;
     unit_config->decel_from = ramp_steps;
+
+    /*calculate how long this move will take. (Tacc/Tvmax)+err*Tvmax*/
+    unit_config->maneuver_time =
+        (uint32_t)((unit_config->accel_rate / unit_config->max_rot_velocity) +
+                   (float)abserror * unit_config->max_rot_velocity);
+
   } else {
     /*We wont. accel and decel vals can't be the same!!*/
     if (abserror % 2) {
@@ -703,12 +715,17 @@ void motion_profiler(MotorConfig *unit_config) {
       unit_config->accel_dowto = (abserror / 2) + 1;
       unit_config->decel_from = abserror / 2;
     }
+    /*calculate this movement 2*sqrt(step*Tacc)*/
+    unit_config->maneuver_time =
+        (uint32_t)(2 * sqrt(abserror * unit_config->accel_rate));
   }
 
-  Serial.print("Will accelerate until: ");
-  Serial.println(unit_config->accel_dowto);
-  Serial.print("Will decelerate from: ");
-  Serial.println(unit_config->decel_from);
+  Serial.print("Time is: ");
+  Serial.println(unit_config->maneuver_time);
+  // Serial.print("Will accelerate until: ");
+  // Serial.println(unit_config->accel_dowto);
+  // Serial.print("Will decelerate from: ");
+  // Serial.println(unit_config->decel_from);
 }
 
 void apply_pose(uint16_t wanted_pose[PCF_COUNT]) {
