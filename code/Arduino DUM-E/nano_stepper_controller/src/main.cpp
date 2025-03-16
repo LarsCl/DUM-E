@@ -82,8 +82,8 @@ struct MotorConfig {
   int position_setpoint;  // Target position in step pulses.
   int current_position;   // Current step position
 
-  double accel_rate; /*Accel/Decel rate modifier in uS per motor step*/
-  float accel_sqrt; /* sqrt(Taccel) for convenient/fast calcs */
+  double accel_rate;      /*Accel/Decel rate modifier in uS per motor step*/
+  float accel_sqrt;       /* sqrt(Taccel) for convenient/fast calcs */
   float max_rot_velocity; /* Holds minimum step period time in uS. */
   float min_rot_velocity; /* Calculated from accel value, Tmax < sqrt(Taccel)*/
   float current_rot_velocity;
@@ -184,7 +184,8 @@ void setup() {
     stepper_motor[i].accel_sqrt = sqrt(stepper_motor[i].accel_rate);
 
     stepper_motor[i].max_rot_velocity =
-        (float)RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL);
+        (float)RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL) /
+        (float)pow(2, DEFAULT_DRV8825_MODE);
     stepper_motor[i].min_rot_velocity = stepper_motor[i].accel_sqrt - 1.0;
     stepper_motor[i].current_rot_velocity = stepper_motor[i].min_rot_velocity;
 
@@ -335,7 +336,11 @@ void loop() {
           set_stepper_block(&stepper_motor[i], 1);
           set_stepper_drive(&stepper_motor[i], 1);
           set_stepper_sleep(&stepper_motor[i], 0);
-          set_stepper_stepsize(&stepper_motor[i], 0);
+          set_stepper_stepsize(&stepper_motor[i], 1);
+
+          set_stepper_rate(&stepper_motor[i], 45);
+          set_stepper_velocity(&stepper_motor[i], 120);
+
           stepper_motor[i].homed = true;
           Serial.print("Cfg'd motor: ");
           Serial.println(i);
@@ -394,22 +399,22 @@ void loop() {
     case 4:
 
       if (!(millis() % 300)) {
-        Serial.print("Current err: ");
-        Serial.println(stepper_motor[TESTAXES].position_setpoint -
-                       stepper_motor[TESTAXES].current_position);
-        Serial.print("Period time uS: ");
-        Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
+        // Serial.print("Current err: ");
+        // Serial.println(stepper_motor[TESTAXES].position_setpoint -
+        //                stepper_motor[TESTAXES].current_position);
+        // Serial.print("Period time uS: ");
+        // Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
 
-        Serial.println(stepper_motor[1].current_rot_velocity);
+        // Serial.println(stepper_motor[1].current_rot_velocity);
 
-        Serial.print("SP0 ");
-        Serial.print(stepper_motor[0].on_sp);
-        Serial.print(" SP 1");
-        Serial.print(stepper_motor[1].on_sp);
-        Serial.print(" SP 2");
-        Serial.print(stepper_motor[2].on_sp);
-        Serial.print(" SP 3");
-        Serial.println(stepper_motor[3].on_sp);
+        // Serial.print("SP0 ");
+        // Serial.print(stepper_motor[0].on_sp);
+        // Serial.print(" SP 1");
+        // Serial.print(stepper_motor[1].on_sp);
+        // Serial.print(" SP 2");
+        // Serial.print(stepper_motor[2].on_sp);
+        // Serial.print(" SP 3");
+        // Serial.println(stepper_motor[3].on_sp);
       }
 
       if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
@@ -483,21 +488,21 @@ void loop() {
       }
 
       if (!(millis() % 300)) {
-        Serial.print("Current err: ");
-        Serial.println(stepper_motor[TESTAXES].position_setpoint -
-                       stepper_motor[TESTAXES].current_position);
-        Serial.print("Period time uS: ");
-        Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
-        Serial.println(stepper_motor[1].current_rot_velocity);
+        // Serial.print("Current err: ");
+        // Serial.println(stepper_motor[TESTAXES].position_setpoint -
+        //                stepper_motor[TESTAXES].current_position);
+        // Serial.print("Period time uS: ");
+        // Serial.println(stepper_motor[TESTAXES].current_rot_velocity);
+        // Serial.println(stepper_motor[1].current_rot_velocity);
 
-        Serial.print("SP0");
-        Serial.print(stepper_motor[0].on_sp);
-        Serial.print(" SP1");
-        Serial.print(stepper_motor[1].on_sp);
-        Serial.print(" SP2");
-        Serial.print(stepper_motor[2].on_sp);
-        Serial.print(" SP3");
-        Serial.println(stepper_motor[3].on_sp);
+        // Serial.print("SP0");
+        // Serial.print(stepper_motor[0].on_sp);
+        // Serial.print(" SP1");
+        // Serial.print(stepper_motor[1].on_sp);
+        // Serial.print(" SP2");
+        // Serial.print(stepper_motor[2].on_sp);
+        // Serial.print(" SP3");
+        // Serial.println(stepper_motor[3].on_sp);
       }
 
       break;
@@ -545,12 +550,12 @@ void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize) {
   unit_config->unit_pcf->write(M0_PIN, (stepsize & 1));
   unit_config->unit_pcf->write(M1_PIN, ((stepsize >> 1) & 1));
   unit_config->unit_pcf->write(M2_PIN, ((stepsize >> 2) & 1));
-  Serial.print("M0 is: ");
-  Serial.print((stepsize & 1));
-  Serial.print(" M1 is: ");
-  Serial.print(((stepsize >> 1) & 1));
-  Serial.print(" M2s is: ");
-  Serial.println(((stepsize >> 2) & 1));
+  // Serial.print("M0 is: ");
+  // Serial.print((stepsize & 1));
+  // Serial.print(" M1 is: ");
+  // Serial.print(((stepsize >> 1) & 1));
+  // Serial.print(" M2s is: ");
+  // Serial.println(((stepsize >> 2) & 1));
 }
 
 void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
@@ -569,11 +574,13 @@ void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
 /*Set stepper acceleration profile, unit in RPM*/
 void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
   /*Beware for too high acceleration rates*/
-  unit_config->accel_rate = RPM_TO_STEP_US_SQRD(accelerate);
+  unit_config->accel_rate = RPM_TO_STEP_US_SQRD(accelerate) /
+                            (float)(pow(2, unit_config->stepper_mode));
 }
 
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
-  unit_config->max_rot_velocity = RPM_TO_STEP_US_FLT(maxvelocity);
+  unit_config->max_rot_velocity = RPM_TO_STEP_US_FLT(maxvelocity) /
+                                  (float)(pow(2, unit_config->stepper_mode));
 }
 
 /*Compute one-time knowledge for driver. Movement accel/decel profile from a
@@ -621,7 +628,7 @@ void motion_profiler(MotorConfig *unit_config) {
   unit_config->accel_sqrt = sqrt(unit_config->accel_rate);
   unit_config->min_rot_velocity = unit_config->accel_sqrt - 1;
 
-  Serial.print("minT");
+  Serial.print("minT: ");
   Serial.println(unit_config->min_rot_velocity);
 
   float sim_period = unit_config->min_rot_velocity;
@@ -667,39 +674,6 @@ void motion_profiler(MotorConfig *unit_config) {
 
 void stepper_control_loop() {
   static uint8_t mtr_index;
-
-  /* operation thoughts:
-  The function starts off by checking whether [current position == setpoint]
-  if setpoint value is higher or lower, corresponding movement direction is set
-  by setting or clearing the DIR flag.
-  Then depending on set acceleration value and current velocity, the clock time
-  of when the motor should perform a whole STEP is calculated.
-
-  This ensures, that the step time is changed only when a single PERIOD of step
-  has been taken. And the control loop does not need extra timing memory of when
-  the next stepper pulse should occur (as this is in the motor struct.)
-
-  Thus TLDR:
-  Calculate the next STEP time, every step pulse period, using acceleration val
-  and current velocity.
-
-  1-> check setpoint - current pos
-  2-> if not 0, set direction pin
-  3-> check if current millis time >= next step time
-  4-> if yes, check current velocity, calculate and compare
-      whether (setpoint - current position) is higher than distance needed to
-      decelarate from current velocity.
-  5-> If error is higher, check if current velocity + acceleration step is under
-      maximum velocity.
-  6-> If there is room to accelerate, do it, if no, dont.
-  7-> update execution time and next step update time.
-
-
-  -> In case millis time was (3) under next step time, check if current millis
-    is above or below ((next update time - exec time)/2) + exec time. If under,
-    STEP pulse pin is LOW, if above, step pulse pin is HIGH. This ensures async
-    operation.
-*/
 
   int pos_error = (stepper_motor[mtr_index].position_setpoint -
                    stepper_motor[mtr_index].current_position);
