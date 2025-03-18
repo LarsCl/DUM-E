@@ -89,6 +89,11 @@ struct MotorConfig {
   int position_setpoint;  // Target position in step pulses.
   int current_position;   // Current step position
 
+  /* Original specifications, others are scaled during applying poses*/
+  double origin_accel_rate; /*Accel/Decel rate modifier in uS per motor step*/
+  float origin_max_rot_velocity; /* Holds minimum step period time in uS. */
+
+  /*System operation memory*/
   double accel_rate;      /*Accel/Decel rate modifier in uS per motor step*/
   float accel_sqrt;       /* sqrt(Taccel) for convenient/fast calcs */
   float max_rot_velocity; /* Holds minimum step period time in uS. */
@@ -210,12 +215,18 @@ void setup() {
     stepper_motor[i].position_setpoint = 0;
     stepper_motor[i].current_position = 0;
 
-    stepper_motor[i].accel_rate = RPM_TO_STEP_US_SQRD(DEFAULT_ROT_ACCEL);
+    /* Original specifications, others are scaled during applying poses*/
+    stepper_motor[i].origin_accel_rate = RPM_TO_STEP_US_SQRD(DEFAULT_ROT_ACCEL);
+    stepper_motor[i].origin_max_rot_velocity =
+        (float)RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL) /
+        (float)(1 << DEFAULT_DRV8825_MODE);
+
+    stepper_motor[i].accel_rate = stepper_motor[i].origin_accel_rate;
     stepper_motor[i].accel_sqrt = sqrt(stepper_motor[i].accel_rate);
 
     stepper_motor[i].max_rot_velocity =
-        (float)RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL) /
-        (float)pow(2, DEFAULT_DRV8825_MODE);
+        stepper_motor[i].origin_max_rot_velocity;
+
     stepper_motor[i].min_rot_velocity = stepper_motor[i].accel_sqrt - 1.0;
     stepper_motor[i].current_rot_velocity = stepper_motor[i].min_rot_velocity;
 
@@ -246,9 +257,9 @@ void setup() {
 
     /*Test if PCF is OK (reachable on I2C)*/
     if (!stepper_motor[i].unit_pcf->isConnected()) {
-      Serial.println("Failed!, unit can't be found on I2C bus.");
+      Serial.println("Failed!, PCF unit can't be found on I2C bus.");
     } else {
-      Serial.println("Init suc6");
+      Serial.println("PCF init suc6");
     }
   }
 }
@@ -359,6 +370,7 @@ void movemotors() {
 void loop() {
   static int test_states = 0;
   static uint32_t testing_timer;
+
   switch (test_states) {
     case 0:
       if (millis() - testing_timer > 2000) {
@@ -631,6 +643,7 @@ int get_stepper_error(MotorConfig *unit_config) {
 /*Compute one-time knowledge for driver. Movement accel/decel profile from a
  * startpoint up to end point.*/
 void motion_profiler(MotorConfig *unit_config) {
+  /* Error goes from x until 0 as motor moves.*/
   int steperror =
       unit_config->position_setpoint - unit_config->current_position;
 
@@ -667,11 +680,13 @@ void motion_profiler(MotorConfig *unit_config) {
    * This implies,  sqrd(Tacc) - 1 is out minimum speed using this eq.
    */
 
-  /* Error goes from x until 0 as motor moves.*/
+  /* apply speed scale*/
+  unit_config->accel_sqrt =
+      sqrt(unit_config->accel_rate * unit_config->movement_speed_scale);
+  unit_config->min_rot_velocity = unit_config->accel_sqrt - 1;
+
   uint16_t ramp_steps = 0;
   uint16_t max_iter = 5000;
-  unit_config->accel_sqrt = sqrt(unit_config->accel_rate);
-  unit_config->min_rot_velocity = unit_config->accel_sqrt - 1;
 
   // Serial.print("minT: ");
   // Serial.println(unit_config->min_rot_velocity);
@@ -728,12 +743,14 @@ void motion_profiler(MotorConfig *unit_config) {
   // Serial.println(unit_config->decel_from);
 }
 
+/*Applies a pose and lets the motors loose.*/
 void apply_pose(uint16_t wanted_pose[PCF_COUNT]) {
   /*Block all motors*/
   for (int i = 0; i < PCF_COUNT; i++) {
     set_stepper_block(&stepper_motor[i], 1);
   }
 
+  /*apply setpoint from converted degrees*/
   for (int i = 0; i < PCF_COUNT; i++) {
     /*Get motor step movement range and map it to 360 degrees.*/
     uint16_t steprange = (200 << stepper_motor[i].stepper_mode);
@@ -744,12 +761,59 @@ void apply_pose(uint16_t wanted_pose[PCF_COUNT]) {
     int pose_step_setpoint = (int)((mapping_factor * (float)wanted_pose[i]) -
                                    (float)(steprange >> 1));
     set_stepper_setpoint(&stepper_motor[i], pose_step_setpoint);
-    motion_profiler(&stepper_motor[i]);
+    // motion_profiler(&stepper_motor[i]);
   }
+
+  /*Run synchromizer to adjust all movements to end at the same time*/
+  synchromizer();
 
   /*Unblock all motors when done*/
   for (int i = 0; i < PCF_COUNT; i++) {
     set_stepper_block(&stepper_motor[i], 0);
+  }
+}
+
+void synchromizer() {
+  /*Synchromizer aims to utilize motion profiler to:
+   * Calculate how long movement from current pos to setpoint will take
+   * find longest process
+   * calculate time ratio of all movement to the longest taking one
+   * adjust movement speed scale
+   * re-run profiler to calculate the new slowed down movement
+   *
+   * */
+
+  /*run everything with scale 1*/
+  for (int i = 0; i < PCF_COUNT; i++) {
+    stepper_motor[i].movement_speed_scale = 1.0f;
+    motion_profiler(&stepper_motor[i]);
+  }
+
+  uint32_t longest_time = 0;
+
+  for (int i = 0; i < PCF_COUNT; i++) {
+    if (stepper_motor[i].maneuver_time > longest_time) {
+      Serial.print("Unit ");
+      Serial.print(i);
+      Serial.print(" takes about ");
+      longest_time = stepper_motor[i].maneuver_time;
+      Serial.print(stepper_motor[i].maneuver_time);
+      Serial.println(" uS");
+    }
+  }
+
+  /*then, run everything as a fraction of the longest time. */
+  Serial.print("Longest time found: ");
+  Serial.println(longest_time);
+
+  for (int i = 0; i < PCF_COUNT; i++) {
+    stepper_motor[i].movement_speed_scale =
+        (uint32_t)((float)stepper_motor[i].maneuver_time / (float)longest_time);
+    motion_profiler(&stepper_motor[i]);
+    Serial.print("Unit ");
+    Serial.print(i);
+    Serial.print(" scaler val is ");
+    Serial.print(stepper_motor[i].movement_speed_scale);
   }
 }
 
