@@ -253,8 +253,8 @@ void loop() {
           set_stepper_sleep(&stepper_motor[i], 0);
           set_stepper_stepsize(&stepper_motor[i], 2);
 
-          set_stepper_rate(&stepper_motor[i], 120);
-          set_stepper_velocity(&stepper_motor[i], 120);
+          set_stepper_rate(&stepper_motor[i], 1000);
+          set_stepper_velocity(&stepper_motor[i], 500);
 
           stepper_motor[i].homed = true;
           Serial.print("Cfg'd motor: ");
@@ -303,13 +303,71 @@ void loop() {
         //   set_stepper_block(&stepper_motor[i], 1);
         //   set_stepper_drive(&stepper_motor[i], 0);
         // }
-        test_states = 1;
+        test_states++;
       }
       break;
 
     case 5:
 
-      // test_states++;
+      if (millis() - testing_timer > 1000) {
+        uint16_t motor_angles[] = {900, 2700, 1800, 1800};
+        apply_pose(motor_angles);
+        testing_timer = millis();
+        test_states++;
+      }
+      break;
+
+    case 6:
+      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+        test_states++;
+      }
+      break;
+
+    case 7:
+
+      if (millis() - testing_timer > 1000) {
+        uint16_t motor_angles[] = {2700, 900, 1800, 1800};
+        apply_pose(motor_angles);
+        testing_timer = millis();
+        test_states++;
+      }
+      break;
+
+    case 8:
+      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+        test_states++;
+
+        // for (int i = 0; i < PCF_COUNT; i++) {
+        //   set_stepper_block(&stepper_motor[i], 1);
+        //   set_stepper_drive(&stepper_motor[i], 0);
+        // }
+      }
+      break;
+
+    case 9:
+
+      if (millis() - testing_timer > 1000) {
+        uint16_t motor_angles[] = {1800, 1800, 1800, 1800};
+        apply_pose(motor_angles);
+        testing_timer = millis();
+        test_states++;
+      }
+
+      break;
+
+    case 10:
+      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+            
+        test_states++;
+
+        for (int i = 0; i < PCF_COUNT; i++) {
+          set_stepper_block(&stepper_motor[i], 1);
+          set_stepper_drive(&stepper_motor[i], 0);
+        }
+      }
       break;
 
     default:
@@ -364,13 +422,14 @@ void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
 void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
   /*Beware for too high acceleration rates*/
   unit_config->origin_accel_rate =
-      RPM_TO_STEP_US_SQRD(accelerate) /
+      RPM_TO_STEP_US_SQRD((float)accelerate) /
       (1.0f / (float)(1 << unit_config->stepper_mode));
 }
 
 void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
-  unit_config->max_rot_velocity = RPM_TO_STEP_US_FLT(maxvelocity) /
-                                  (float)(pow(2, unit_config->stepper_mode));
+  unit_config->origin_max_rot_velocity =
+      RPM_TO_STEP_US_FLT((float)maxvelocity) /
+      (1.0 / (float)(1 << unit_config->stepper_mode));
 }
 
 /*Return current pos - setpoint error*/
