@@ -269,7 +269,7 @@ void loop() {
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {180, 180, 180, 180};
+        uint16_t motor_angles[] = {3600, 3600, 0, 1800};
         apply_pose(motor_angles);
 
         // Serial.print("Applied angles");
@@ -288,7 +288,7 @@ void loop() {
       break;
 
     case 3: {
-      uint16_t motor_angles[] = {180, 180, 180, 180};
+      uint16_t motor_angles[] = {1800, 1800, 1800, 1800};
       apply_pose(motor_angles);
       test_states++;
     } break;
@@ -297,13 +297,19 @@ void loop() {
 
       if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
           stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-        test_states++;
+        Serial.println("Arrived again. Disable motors.");
+
+        // for (int i = 0; i < PCF_COUNT; i++) {
+        //   set_stepper_block(&stepper_motor[i], 1);
+        //   set_stepper_drive(&stepper_motor[i], 0);
+        // }
+        test_states = 1;
       }
       break;
 
     case 5:
 
-      test_states++;
+      // test_states++;
       break;
 
     default:
