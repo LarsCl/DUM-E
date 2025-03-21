@@ -1,0 +1,25 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: ""
+    relative_path: /home/lars/Downloads/smarty/urdf/smarty.urdf
+  srdf:
+    relative_path: config/smarty.srdf
+  package_settings:
+    author_name: lars
+    author_email: 03lars@gmail.com
+    generated_timestamp: 1742554557
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity

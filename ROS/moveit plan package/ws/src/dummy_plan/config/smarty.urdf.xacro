@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="smarty">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+
+    <!-- Import smarty urdf file -->
+    <xacro:include filename="/home/lars/Downloads/smarty/urdf/smarty.urdf" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="smarty.ros2_control.xacro" />
+
+
+    <xacro:smarty_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+
+</robot>

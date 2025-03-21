@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="smarty">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.112458894705058 0.0119999999999999 0.0240415682041871"
+        rpy="0 0 0" />
+      <mass
+        value="0.997141508249401" />
+      <inertia
+        ixx="0.00334466190404555"
+        ixy="0"
+        ixz="2.95486633363188E-38"
+        iyy="0.00659359822329916"
+        iyz="1.13442333061348E-17"
+        izz="0.00334466190404555" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="l1">
+    <inertial>
+      <origin
+        xyz="2.72430254972394E-06 -4.84081027471439E-07 0.045986010607279"
+        rpy="0 0 0" />
+      <mass
+        value="2.41301594757283" />
+      <inertia
+        ixx="0.0103221730581283"
+        ixy="-5.49682431778409E-08"
+        ixz="8.42502994562522E-09"
+        iyy="0.0266896634837572"
+        iyz="4.97119835846574E-08"
+        izz="0.0267626968782476" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="j1"
+    type="continuous">
+    <origin
+      xyz="0.11246 -0.024042 0.024"
+      rpy="0 0 1.5754" />
+    <parent
+      link="base_link" />
+    <child
+      link="l1" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-6.28"
+      upper="6.28"
+      effort="5"
+      velocity="0.6" />
+  </joint>
+  <link
+    name="l2">
+    <inertial>
+      <origin
+        xyz="0.165231668339801 0.0273228433790217 4.23272528138341E-16"
+        rpy="0 0 0" />
+      <mass
+        value="7.05015818581324" />
+      <inertia
+        ixx="0.0354826029217015"
+        ixy="-0.00251465724544439"
+        ixz="-2.77545591760922E-16"
+        iyy="0.137700303292132"
+        iyz="-6.61363325216158E-18"
+        izz="0.114668018727875" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="j2"
+    type="continuous">
+    <origin
+      xyz="0 0 0.109"
+      rpy="3.1416 -1.5708 0" />
+    <parent
+      link="l1" />
+    <child
+      link="l2" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-0.4"
+      upper="1.6"
+      effort="10"
+      velocity="0.4" />
+  </joint>
+  <link
+    name="l3">
+    <inertial>
+      <origin
+        xyz="0.165739050222885 -6.66133814775094E-16 2.32452945780892E-16"
+        rpy="0 0 0" />
+      <mass
+        value="2.2411047959635" />
+      <inertia
+        ixx="0.0026306785283506"
+        ixy="1.27831567491137E-16"
+        ixz="-3.10861091642328E-19"
+        iyy="0.0366498495542086"
+        iyz="5.20882606906334E-18"
+        izz="0.0351581847803734" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="j3"
+    type="continuous">
+    <origin
+      xyz="0.425 0 0"
+      rpy="0 0 -1.5708" />
+    <parent
+      link="l2" />
+    <child
+      link="l3" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-1.1"
+      upper="1.1"
+      effort="10"
+      velocity="0.4" />
+  </joint>
+  <link
+    name="l4">
+    <inertial>
+      <origin
+        xyz="-7.94503351997378E-16 0 0.0436685322374739"
+        rpy="0 0 0" />
+      <mass
+        value="0.298813600776043" />
+      <inertia
+        ixx="0.000585663342419047"
+        ixy="-2.82781005691958E-19"
+        ixz="-1.86855468164299E-18"
+        iyy="0.00109888441659249"
+        iyz="-5.94177153381262E-19"
+        izz="0.000708162025673873" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l4.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="j4"
+    type="continuous">
+    <origin
+      xyz="0.375 0 0"
+      rpy="0 1.5708 0" />
+    <parent
+      link="l3" />
+    <child
+      link="l4" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-6.28"
+      upper="6.28"
+      effort="5"
+      velocity="3.14" />
+  </joint>
+  <link
+    name="l5">
+    <inertial>
+      <origin
+        xyz="1.02499020035451E-09 6.67443489366093E-09 0.0203390758636098"
+        rpy="0 0 0" />
+      <mass
+        value="0.273297613750633" />
+      <inertia
+        ixx="0.000182445897734845"
+        ixy="5.35819967971489E-11"
+        ixz="-3.57537126337979E-12"
+        iyy="0.000413096157847315"
+        iyz="-1.41751468883735E-10"
+        izz="0.000402699107964568" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l5.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="j5"
+    type="continuous">
+    <origin
+      xyz="0 0 0.112"
+      rpy="0 0 0" />
+    <parent
+      link="l4" />
+    <child
+      link="l5" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-1.6"
+      upper="1.6"
+      effort="2"
+      velocity="3.14" />
+  </joint>
+  <link
+    name="l6">
+    <inertial>
+      <origin
+        xyz="7.3899220076612E-16 -0.0036576311879748 0.0199237687937331"
+        rpy="0 0 0" />
+      <mass
+        value="0.0781471172580461" />
+      <inertia
+        ixx="2.44312541272295E-05"
+        ixy="1.37390888459256E-19"
+        ixz="1.51036562407282E-19"
+        iyy="2.54767270417922E-05"
+        iyz="4.30904522613063E-06"
+        izz="2.91481777295479E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l6.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="file:///home/lars/Downloads/smarty/meshes/l6.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="j6"
+    type="continuous">
+    <origin
+      xyz="0 0 0.025001"
+      rpy="0 0 0" />
+    <parent
+      link="l5" />
+    <child
+      link="l6" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-6.28"
+      upper="6.28"
+      effort="2"
+      velocity="3.14" />
+  </joint>
+</robot>

@@ -1,0 +1,60 @@
+[0.015s] Invoking command in '/home/lars/Downloads/ws/build/dummy_plan': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/lars/ws_moveit/install/moveit_configs_utils:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/lars/Downloads/ws/src/dummy_plan -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/lars/Downloads/ws/install/dummy_plan
+[0.076s] -- The C compiler identification is GNU 13.3.0
+[0.133s] -- The CXX compiler identification is GNU 13.3.0
+[0.150s] -- Detecting C compiler ABI info
+[0.253s] -- Detecting C compiler ABI info - done
+[0.262s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.262s] -- Detecting C compile features
+[0.263s] -- Detecting C compile features - done
+[0.273s] -- Detecting CXX compiler ABI info
+[0.387s] -- Detecting CXX compiler ABI info - done
+[0.396s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.397s] -- Detecting CXX compile features
+[0.397s] -- Detecting CXX compile features - done
+[0.408s] -- Found ament_cmake: 2.5.3 (/opt/ros/jazzy/share/ament_cmake/cmake)
+[0.627s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+[0.693s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[0.899s] -- Configuring done (0.9s)
+[0.902s] -- Generating done (0.0s)
+[0.903s] -- Build files have been written to: /home/lars/Downloads/ws/build/dummy_plan
+[0.909s] Invoked command in '/home/lars/Downloads/ws/build/dummy_plan' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/lars/ws_moveit/install/moveit_configs_utils:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/lars/Downloads/ws/src/dummy_plan -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/lars/Downloads/ws/install/dummy_plan
+[0.910s] Invoking command in '/home/lars/Downloads/ws/build/dummy_plan': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/lars/ws_moveit/install/moveit_configs_utils:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/lars/Downloads/ws/build/dummy_plan -- -j12 -l12
+[0.962s] Invoked command in '/home/lars/Downloads/ws/build/dummy_plan' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/lars/ws_moveit/install/moveit_configs_utils:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/lars/Downloads/ws/build/dummy_plan -- -j12 -l12
+[0.975s] Invoking command in '/home/lars/Downloads/ws/build/dummy_plan': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/lars/ws_moveit/install/moveit_configs_utils:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/lars/Downloads/ws/build/dummy_plan
+[0.986s] -- Install configuration: ""
+[0.986s] -- Execute custom install script
+[0.987s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/ament_index/resource_index/package_run_dependencies/dummy_plan
+[0.999s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/ament_index/resource_index/parent_prefix_path/dummy_plan
+[1.012s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/environment/ament_prefix_path.sh
+[1.024s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/environment/ament_prefix_path.dsv
+[1.037s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/environment/path.sh
+[1.049s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/environment/path.dsv
+[1.061s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/local_setup.bash
+[1.075s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/local_setup.sh
+[1.088s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/local_setup.zsh
+[1.100s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/local_setup.dsv
+[1.113s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/package.dsv
+[1.125s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/ament_index/resource_index/packages/dummy_plan
+[1.137s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/cmake/dummy_planConfig.cmake
+[1.149s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/cmake/dummy_planConfig-version.cmake
+[1.161s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/package.xml
+[1.173s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/demo.launch.py
+[1.185s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/move_group.launch.py
+[1.197s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/moveit_rviz.launch.py
+[1.211s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/rsp.launch.py
+[1.223s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/setup_assistant.launch.py
+[1.235s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/spawn_controllers.launch.py
+[1.247s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/static_virtual_joint_tfs.launch.py
+[1.259s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/launch/warehouse_db.launch.py
+[1.271s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/initial_positions.yaml
+[1.282s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/joint_limits.yaml
+[1.294s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/kinematics.yaml
+[1.307s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/moveit.rviz
+[1.319s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/moveit_controllers.yaml
+[1.331s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/pilz_cartesian_limits.yaml
+[1.343s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/ros2_controllers.yaml
+[1.355s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/smarty.ros2_control.xacro
+[1.366s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/smarty.srdf
+[1.378s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/config/smarty.urdf.xacro
+[1.390s] -- Symlinking: /home/lars/Downloads/ws/install/dummy_plan/share/dummy_plan/.setup_assistant
+[1.403s] Invoked command in '/home/lars/Downloads/ws/build/dummy_plan' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/lars/ws_moveit/install/moveit_configs_utils:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/lars/Downloads/ws/build/dummy_plan
