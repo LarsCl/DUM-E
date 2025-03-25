@@ -127,9 +127,9 @@ void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize);
 /* Position to move this axis to a certain setpoint position*/
 void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse);
 /* Change acceleration rate of a motor */
-void set_stepper_rate(MotorConfig *unit_config, int accelrate);
+void set_stepper_rate(MotorConfig *unit_config, float accelrate);
 /* Change max velocity of motor */
-void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity);
+void set_stepper_velocity(MotorConfig *unit_config, float maxvelocity);
 /*Return current pos - setpoint error*/
 int get_stepper_error(MotorConfig *unit_config);
 
@@ -193,9 +193,9 @@ void setup() {
     /* Original specifications, others are scaled during applying poses*/
     stepper_motor[i].origin_accel_rate = RPM_TO_STEP_US_SQRD(DEFAULT_ROT_ACCEL);
     stepper_motor[i].origin_max_rot_velocity =
-        (float)RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL) /
-        (float)(1 << DEFAULT_DRV8825_MODE);
+        RPM_TO_STEP_US_FLT(DEFAULT_MAX_ROT_VEL);
 
+    /* pre calculated values at motion profiler and actual used values.*/
     stepper_motor[i].accel_rate = stepper_motor[i].origin_accel_rate;
     stepper_motor[i].accel_sqrt = sqrt(stepper_motor[i].accel_rate);
 
@@ -269,10 +269,10 @@ void loop() {
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {3600, 3600, 0, 1800};
+        uint16_t motor_angles[] = {0, 0, 0, 0};
         apply_pose(motor_angles);
 
-        // Serial.print("Applied angles");
+        Serial.print("all set to 0 0 0 0");
         testing_timer = millis();
         test_states++;
       }
@@ -288,7 +288,7 @@ void loop() {
       break;
 
     case 3: {
-      uint16_t motor_angles[] = {1800, 1800, 1800, 1800};
+      uint16_t motor_angles[] = {3600, 2700, 1800, 900};
       apply_pose(motor_angles);
       test_states++;
     } break;
@@ -310,7 +310,7 @@ void loop() {
     case 5:
 
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {900, 2700, 1800, 1800};
+        uint16_t motor_angles[] = {0, 0, 0, 0};
         apply_pose(motor_angles);
         testing_timer = millis();
         test_states++;
@@ -327,7 +327,7 @@ void loop() {
     case 7:
 
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {2700, 900, 1800, 1800};
+        uint16_t motor_angles[] = {0, 0, 0, 0};
         apply_pose(motor_angles);
         testing_timer = millis();
         test_states++;
@@ -360,7 +360,6 @@ void loop() {
     case 10:
       if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
           stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-            
         test_states++;
 
         for (int i = 0; i < PCF_COUNT; i++) {
@@ -419,17 +418,13 @@ void set_stepper_setpoint(MotorConfig *unit_config, int setpointpulse) {
 }
 
 /*Set stepper acceleration profile, unit in RPM*/
-void set_stepper_rate(MotorConfig *unit_config, int accelerate) {
+void set_stepper_rate(MotorConfig *unit_config, float accelerate) {
   /*Beware for too high acceleration rates*/
-  unit_config->origin_accel_rate =
-      RPM_TO_STEP_US_SQRD((float)accelerate) /
-      (1.0f / (float)(1 << unit_config->stepper_mode));
+  unit_config->origin_accel_rate = RPM_TO_STEP_US_SQRD(accelerate);
 }
 
-void set_stepper_velocity(MotorConfig *unit_config, int maxvelocity) {
-  unit_config->origin_max_rot_velocity =
-      RPM_TO_STEP_US_FLT((float)maxvelocity) /
-      (1.0 / (float)(1 << unit_config->stepper_mode));
+void set_stepper_velocity(MotorConfig *unit_config, float maxvelocity) {
+  unit_config->origin_max_rot_velocity = RPM_TO_STEP_US_FLT(maxvelocity);
 }
 
 /*Return current pos - setpoint error*/
@@ -459,6 +454,12 @@ void motion_profiler(MotorConfig *unit_config) {
 
   uint32_t abserror = (uint32_t)abs(steperror);
 
+  /* Dont compute anything if there is nothing to do */
+  if (abserror == 0) {
+    unit_config->maneuver_time = 0;
+    return;
+  }
+
   /* Deceleration equation yapping below:
    *
    * Acceleration as we know it : a = (Vf - V0)/t_delta
@@ -476,31 +477,38 @@ void motion_profiler(MotorConfig *unit_config) {
    * This implies,  sqrd(Tacc) - 1 is out minimum speed using this eq.
    */
 
-  /* apply speed scale*/
+  /*TODO, keep te basis settings in the motor memory, but apply period time
+   * compensation due to microstepping and movement speed scales within this
+   * function alone. ALSO APPLY GEAR RATIOS HERE.*/
+
+  /* apply speed scale acceleration*/
   unit_config->accel_rate = unit_config->origin_accel_rate *
                             (1.0 / unit_config->movement_speed_scale);
   /*and microstepping compensator*/
   unit_config->accel_rate *= (1.0 / (float)(1 << unit_config->stepper_mode));
 
-  /*apply speed scale */
+  /* APPLY GEAR RATIO */
+  unit_config->accel_rate *= (1.0 / (unit_config->shaft_gear_ratio));
+
+  /*apply speed scale to velocity */
   unit_config->max_rot_velocity = unit_config->origin_max_rot_velocity *
                                   (1.0 / unit_config->movement_speed_scale);
+
   /*apply microstepp config comp. */
   unit_config->max_rot_velocity *=
       (1.0 / (float)(1 << unit_config->stepper_mode));
 
+  /* Apply the gear ratio modifier*/
+  unit_config->max_rot_velocity *= (1.0 / unit_config->shaft_gear_ratio);
+
   unit_config->accel_sqrt = sqrt(unit_config->accel_rate);
   unit_config->min_rot_velocity = unit_config->accel_sqrt - 1;
 
+  /* 5000 is max iteration*/
   uint32_t ramp_steps = 0;
   uint16_t max_iter = 5000;
 
-  // Serial.print("minT: ");
-  // Serial.println(unit_config->min_rot_velocity);
-
   float sim_period = unit_config->min_rot_velocity;
-
-  /* 5000 is max iteration*/
 
   while ((sim_period > unit_config->max_rot_velocity) &&
          (ramp_steps < max_iter)) {
@@ -593,7 +601,8 @@ void synchromizer() {
   /*run everything with scale 1*/
 
   for (int i = 0; i < PCF_COUNT; i++) {
-    Serial.println("Re-set scale to 100%");
+    Serial.print("Re-set scale to 1.0 of U: ");
+    Serial.println(i);
     stepper_motor[i].movement_speed_scale = 1.0f;
     motion_profiler(&stepper_motor[i]);
     Serial.println("\033[1;32m");
