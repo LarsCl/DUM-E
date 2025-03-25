@@ -136,7 +136,9 @@ int get_stepper_error(MotorConfig *unit_config);
 void motion_profiler(MotorConfig *unit_config);
 /*Configures system speed scale for motors from current to setpoint positions,
  * also sets setpoints. Angles are in deca degrees. 180 => 1800*/
-void apply_pose(uint16_t wanted_pose[PCF_COUNT]);
+
+void apply_pose(int16_t wanted_pose[PCF_COUNT]);
+
 /* Looks at how long a movement takes with default values of a device, and slow
  * it down until they all approximately match.*/
 void synchromizer();
@@ -269,7 +271,7 @@ void loop() {
 
     case 1:
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {0, 0, 0, 0};
+        int16_t motor_angles[] = {0, 0, 0, 0};
         apply_pose(motor_angles);
 
         Serial.print("all set to 0 0 0 0");
@@ -288,7 +290,7 @@ void loop() {
       break;
 
     case 3: {
-      uint16_t motor_angles[] = {3600, 2700, 1800, 900};
+      int16_t motor_angles[] = {3600, 2700, 1800, 900};
       apply_pose(motor_angles);
       test_states++;
     } break;
@@ -310,7 +312,7 @@ void loop() {
     case 5:
 
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {0, 0, 0, 0};
+        int16_t motor_angles[] = {0, 0, 0, 0};
         apply_pose(motor_angles);
         testing_timer = millis();
         test_states++;
@@ -327,7 +329,7 @@ void loop() {
     case 7:
 
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {0, 0, 0, 0};
+        int16_t motor_angles[] = {0, 0, 0, 0};
         apply_pose(motor_angles);
         testing_timer = millis();
         test_states++;
@@ -349,7 +351,7 @@ void loop() {
     case 9:
 
       if (millis() - testing_timer > 1000) {
-        uint16_t motor_angles[] = {1800, 1800, 1800, 1800};
+        int16_t motor_angles[] = {1800, 1800, 1800, 1800};
         apply_pose(motor_angles);
         testing_timer = millis();
         test_states++;
@@ -551,8 +553,8 @@ void motion_profiler(MotorConfig *unit_config) {
   Serial.println(unit_config->maneuver_time);
 }
 
-/*Applies a pose and lets the motors loose.*/
-void apply_pose(uint16_t wanted_pose[PCF_COUNT]) {
+/*Applies a pose in decadegrees and lets the motors loose.*/
+void apply_pose(int16_t wanted_pose[PCF_COUNT]) {
   /*Block all motors*/
   for (int i = 0; i < PCF_COUNT; i++) {
     set_stepper_block(&stepper_motor[i], 1);
@@ -567,9 +569,10 @@ void apply_pose(uint16_t wanted_pose[PCF_COUNT]) {
     /* Dont forget input is in deca DEGREES*/
     float mapping_factor = ((float)steprange / 3600.0f);
 
-    /*((1600/3600)*wantedangle)-800*/
-    int pose_step_setpoint = (int)((mapping_factor * (float)wanted_pose[i]) -
-                                   (float)(steprange / 2));
+    /*((1600/3600)*wantedangle). Thus, 0 degree position is setpoint 0 steps.
+     * When degree is 90, step would be in the example above 400.
+     */
+    int pose_step_setpoint = (int)(mapping_factor * (float)wanted_pose[i]);
     set_stepper_setpoint(&stepper_motor[i], pose_step_setpoint);
   }
 
