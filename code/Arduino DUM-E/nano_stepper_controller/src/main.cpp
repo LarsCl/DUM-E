@@ -38,6 +38,8 @@
 #define ANALOG6 6
 #define ANALOG7 7
 
+#define SERIAL_BUF_SIZE 32 /*bytes to hold in buf*/
+
 /* Is (60*10^6)/ (RPM * 200), returns uS per rotation */
 /* Works RPM -> STEP uS and vice versa/*/
 #define RPM_TO_STEP_US_FLT(x) (600000.0f / (x * 2.0f))
@@ -113,7 +115,16 @@ struct MotorConfig {
 
 MotorConfig stepper_motor[PCF_COUNT];
 
-uint16_t motor_angles[PCF_COUNT];
+uint8_t serial_buffer[SERIAL_BUF_SIZE];
+
+/* pose value in decadegrees which are:
+ * [end effector left] [end effector right] [wrist motor] [base motor]
+ */
+int16_t system_pose[PCF_COUNT] = {0, 0, 0, 0};
+
+/*system state to put it in certain modes.
+ */
+enum system_state_t { UNINIT, INIT } system_state;
 
 /* Hardware enable or disable stepper motor, 1 is ON*/
 void set_stepper_drive(MotorConfig *unit_config, bool onoffvalue);
@@ -134,9 +145,13 @@ void set_stepper_velocity(MotorConfig *unit_config, float maxvelocity);
 int get_stepper_error(MotorConfig *unit_config);
 
 void motion_profiler(MotorConfig *unit_config);
+
+/* A little dirty, but this overwrites angle values of end effector motors which
+ * are kept in the system pose memory variable. Return true when all is good.*/
+bool calculate_end_angles(int16_t angle, int16_t rotation);
+
 /*Configures system speed scale for motors from current to setpoint positions,
  * also sets setpoints. Angles are in deca degrees. 180 => 1800*/
-
 void apply_pose(int16_t wanted_pose[PCF_COUNT]);
 
 /* Looks at how long a movement takes with default values of a device, and slow
@@ -147,6 +162,9 @@ void synchromizer();
  * should be when a step is done.
  */
 void stepper_control_loop();
+
+void serial_buffer_unloader();
+void process_packet();
 
 void setup() {
   Serial.begin(115200);
@@ -242,138 +260,134 @@ void setup() {
 }
 
 void loop() {
-  static int test_states = 0;
   static uint32_t testing_timer;
 
-  switch (test_states) {
-    case 0:
-      if (millis() - testing_timer > 2000) {
-        /*Enable hardware, but block SW control*/
-        for (int i = 0; i < PCF_COUNT; i++) {
-          set_stepper_block(&stepper_motor[i], 1);
-          set_stepper_drive(&stepper_motor[i], 1);
-          set_stepper_sleep(&stepper_motor[i], 0);
-          set_stepper_stepsize(&stepper_motor[i], 2);
+  // switch (system_state) {
+  //   case UNINIT:
+  //     if (millis() - testing_timer > 2000) {
+  //       /*Enable hardware, but block SW control*/
+  //       for (int i = 0; i < PCF_COUNT; i++) {
+  //         set_stepper_block(&stepper_motor[i], 1);
+  //         set_stepper_drive(&stepper_motor[i], 1);
+  //         set_stepper_sleep(&stepper_motor[i], 0);
+  //         set_stepper_stepsize(&stepper_motor[i], 2);
 
-          set_stepper_rate(&stepper_motor[i], 1000);
-          set_stepper_velocity(&stepper_motor[i], 500);
+  //         set_stepper_rate(&stepper_motor[i], 1000);
+  //         set_stepper_velocity(&stepper_motor[i], 500);
 
-          stepper_motor[i].homed = true;
-          Serial.print("Cfg'd motor: ");
-          Serial.println(i);
-        }
+  //         stepper_motor[i].homed = true;
+  //         Serial.print("Cfg'd motor: ");
+  //         Serial.println(i);
+  //       }
 
-        testing_timer = millis();
-        test_states++;
-      }
+  //       testing_timer = millis();
+  //       test_states++;
+  //     }
 
-      break;
+  //     break;
 
-    case 1:
-      if (millis() - testing_timer > 1000) {
-        int16_t motor_angles[] = {0, 0, 0, 0};
-        apply_pose(motor_angles);
+  //   case 1:
+  //     if (millis() - testing_timer > 1000) {
+  //       int16_t motor_angles[] = {0, 0, 0, 0};
+  //       apply_pose(motor_angles);
+  //       Serial.print("all set to 0 0 0 0");
+  //       testing_timer = millis();
+  //       test_states++;
+  //     }
+  //     break;
 
-        Serial.print("all set to 0 0 0 0");
-        testing_timer = millis();
-        test_states++;
-      }
-      break;
+  //   case 2:
+  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+  //       test_states++;
+  //     }
+  //     break;
 
-    case 2:
+  //   case 3: {
+  //     int16_t motor_angles[] = {3600, 2700, 1800, 900};
+  //     apply_pose(motor_angles);
+  //     test_states++;
+  //   } break;
 
-      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-        test_states++;
-      }
+  //   case 4:
 
-      break;
+  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+  //       Serial.println("Arrived again. Disable motors.");
 
-    case 3: {
-      int16_t motor_angles[] = {3600, 2700, 1800, 900};
-      apply_pose(motor_angles);
-      test_states++;
-    } break;
+  //       // for (int i = 0; i < PCF_COUNT; i++) {
+  //       //   set_stepper_block(&stepper_motor[i], 1);
+  //       //   set_stepper_drive(&stepper_motor[i], 0);
+  //       // }
+  //       test_states++;
+  //     }
+  //     break;
 
-    case 4:
+  //   case 5:
 
-      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-        Serial.println("Arrived again. Disable motors.");
+  //     if (millis() - testing_timer > 1000) {
+  //       int16_t motor_angles[] = {0, 0, 0, 0};
+  //       apply_pose(motor_angles);
+  //       testing_timer = millis();
+  //       test_states++;
+  //     }
+  //     break;
 
-        // for (int i = 0; i < PCF_COUNT; i++) {
-        //   set_stepper_block(&stepper_motor[i], 1);
-        //   set_stepper_drive(&stepper_motor[i], 0);
-        // }
-        test_states++;
-      }
-      break;
+  //   case 6:
+  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+  //       test_states++;
+  //     }
+  //     break;
 
-    case 5:
+  //   case 7:
 
-      if (millis() - testing_timer > 1000) {
-        int16_t motor_angles[] = {0, 0, 0, 0};
-        apply_pose(motor_angles);
-        testing_timer = millis();
-        test_states++;
-      }
-      break;
+  //     if (millis() - testing_timer > 1000) {
+  //       int16_t motor_angles[] = {0, 0, 0, 0};
+  //       apply_pose(motor_angles);
+  //       testing_timer = millis();
+  //       test_states++;
+  //     }
+  //     break;
 
-    case 6:
-      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-        test_states++;
-      }
-      break;
+  //   case 8:
+  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+  //       test_states++;
 
-    case 7:
+  //       // for (int i = 0; i < PCF_COUNT; i++) {
+  //       //   set_stepper_block(&stepper_motor[i], 1);
+  //       //   set_stepper_drive(&stepper_motor[i], 0);
+  //       // }
+  //     }
+  //     break;
 
-      if (millis() - testing_timer > 1000) {
-        int16_t motor_angles[] = {0, 0, 0, 0};
-        apply_pose(motor_angles);
-        testing_timer = millis();
-        test_states++;
-      }
-      break;
+  //   case 9:
 
-    case 8:
-      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-        test_states++;
+  //     if (millis() - testing_timer > 1000) {
+  //       int16_t motor_angles[] = {1800, 1800, 1800, 1800};
+  //       apply_pose(motor_angles);
+  //       testing_timer = millis();
+  //       test_states++;
+  //     }
 
-        // for (int i = 0; i < PCF_COUNT; i++) {
-        //   set_stepper_block(&stepper_motor[i], 1);
-        //   set_stepper_drive(&stepper_motor[i], 0);
-        // }
-      }
-      break;
+  //     break;
 
-    case 9:
+  //   case 10:
+  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
+  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
+  //       test_states++;
 
-      if (millis() - testing_timer > 1000) {
-        int16_t motor_angles[] = {1800, 1800, 1800, 1800};
-        apply_pose(motor_angles);
-        testing_timer = millis();
-        test_states++;
-      }
+  //       for (int i = 0; i < PCF_COUNT; i++) {
+  //         set_stepper_block(&stepper_motor[i], 1);
+  //         set_stepper_drive(&stepper_motor[i], 0);
+  //       }
+  //     }
+  //     break;
 
-      break;
-
-    case 10:
-      if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-          stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-        test_states++;
-
-        for (int i = 0; i < PCF_COUNT; i++) {
-          set_stepper_block(&stepper_motor[i], 1);
-          set_stepper_drive(&stepper_motor[i], 0);
-        }
-      }
-      break;
-
-    default:
-      break;
-  }
+  //   default:
+  //     break;
+  // }
 
   /*constant polling*/
   stepper_control_loop();
@@ -551,6 +565,38 @@ void motion_profiler(MotorConfig *unit_config) {
 
   Serial.print("Time is: ");
   Serial.println(unit_config->maneuver_time);
+}
+
+/* angles are in decadegrees!
+ * angle can go from +90 downto -90
+ * rotation can be total +720 downto -720 (4 rot range, arb. defined)*/
+bool calculate_end_angles(int16_t angle, int16_t rotation) {
+  /* rotation - motors turn the same dir | COMMON MODE.
+   * angle -    motors turn against | DIFFERENTIAL.
+   */
+
+  /* Filter out value ranges*/
+  if ((angle > 900) || (angle < -900)) {
+    return false;
+  }
+  if ((rotation > 7200) || (angle < -7200)) {
+    return false;
+  }
+
+  /* apply angle first (abspos) */
+  int16_t effleft = angle;
+  int16_t effright = -angle;
+
+  /* apply rotation over it*/
+  effleft += rotation;
+  effright += rotation;
+
+  /* throw it into the syspos*/
+  system_pose[0] = effleft;
+  system_pose[1] = effright;
+
+  /* return true when all ok.*/
+  return true;
 }
 
 /*Applies a pose in decadegrees and lets the motors loose.*/
@@ -734,4 +780,72 @@ void stepper_control_loop() {
 
   mtr_index++;
   mtr_index %= (PCF_COUNT);
+}
+
+/*Command structure:
+* [COMMAND TYPE] [DATA]........\n
+*
+* CMDS:
+*   SETPOSE - int16, int16, int16, int16
+
+*   GETTIME - (returned) microseconds in uint32
+*/
+
+void serial_buffer_unloader() {
+  static uint8_t bufferIndex;
+  static uint32_t lastByteTime;
+
+  while (Serial.available() > 0) {
+    serial_buffer[bufferIndex] = Serial.read();
+    lastByteTime = millis();  // Reset timeout timer
+
+    bufferIndex++;
+
+    /*Processing and overflow protection*/
+    if (bufferIndex >= 14) {
+      process_packet();
+      bufferIndex = 0;
+    } else if (bufferIndex >= BUFFER_LENGTH) {
+      bufferIndex = 0;
+    }
+  }
+  /* For timo */
+  if (bufferIndex > 0 && (millis() - lastByteTime) > 100) {
+    bufferIndex = 0;  // Discard partial data
+  }
+}
+
+void process_packet() {
+  // Validate markers (critical for alignment)
+  if (serial_buffer[0] != 'C' || serial_buffer[2] != 'B' ||
+      serial_buffer[5] != 'W' || serial_buffer[8] != 'R' ||
+      serial_buffer[11] != 'A') {
+    return;  // Invalid packet
+  }
+
+  uint8_t command = serial_buffer[1];
+
+  switch (command) {
+    case 0x01: /* Set pose command */
+
+      int16_t baseAngle = (serial_buffer[3] << 8) | serial_buffer[4];
+      int16_t rotation = (serial_buffer[6] << 8) | serial_buffer[7];
+      int16_t endRotation = (serial_buffer[9] << 8) | serial_buffer[10];
+      int16_t endAngle = (serial_buffer[12] << 8) | serial_buffer[13];
+
+      calculate_end_angles(endAngle, endRotation);
+      system_pose[2] = rotation;
+      system_pose[3] = baseAngle;
+
+      apply_pose(system_pose);
+
+      break;
+
+    case 0x02:
+      Serial.println("Coolbeans");
+      break;
+
+    default:
+      break;
+  }
 }
