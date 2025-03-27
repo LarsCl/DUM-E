@@ -66,6 +66,10 @@
 
 long timer = 0;
 
+/*used to detect when homing threshold is passed*/
+uint16_t adc0_initial_value;
+uint16_t adc1_initial_value;
+
 const uint8_t step_pins[PCF_COUNT] = {STEP3_PIN, STEP2_PIN, STEP1_PIN,
                                       STEP0_PIN};
 const float gears_map[PCF_COUNT] = {motor_0_ratio, motor_1_ratio, motor_2_ratio,
@@ -109,6 +113,7 @@ struct MotorConfig {
   volatile bool homed;         /*Is this axis homed?*/
   volatile bool block_control; /* Flag to software block driving this motor.
   true is blocking*/
+  volatile bool is_homing;
 
   /*Motor ctrl info*/
   uint8_t pcf_addr;
@@ -129,7 +134,7 @@ int16_t system_pose[PCF_COUNT] = {0, 0, 0, 0};
 
 /*system state to put it in certain modes.
  */
-enum system_state_t { UNINIT, INIT } system_state;
+enum system_state_t { UNINIT, INIT, HOMING } system_state;
 
 /* Hardware enable or disable stepper motor, 1 is ON*/
 void set_stepper_drive(MotorConfig *unit_config, bool onoffvalue);
@@ -137,6 +142,8 @@ void set_stepper_drive(MotorConfig *unit_config, bool onoffvalue);
 void set_stepper_block(MotorConfig *unit_config, bool onoffvalue);
 /* Eep. */
 void set_stepper_sleep(MotorConfig *unit_config, bool on_off_value);
+
+void start_stepper_homing(MotorConfig *unit_config);
 
 /* 0 is fullstep, 1 is 1/2, 2 is 1/4, 3 is 1/8, 4 is 1/16, 5 is 1/32 */
 void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize);
@@ -167,6 +174,8 @@ void synchromizer();
  * should be when a step is done.
  */
 void stepper_control_loop();
+
+void homing_surveyor();
 
 void serial_buffer_unloader();
 void process_packet();
@@ -243,6 +252,7 @@ void setup() {
     stepper_motor[i].on_sp = true;
     stepper_motor[i].homed = false;
     stepper_motor[i].block_control = true;
+    stepper_motor[i].is_homing = false;
     stepper_motor[i].step_pulse_pin = step_pins[i];
 
     stepper_motor[i].stepper_mode = DEFAULT_DRV8825_MODE;
@@ -287,7 +297,8 @@ void setup() {
 }
 
 void loop() {
-  /*TODO put the homing code*/
+  /*Tracks button states and whether homing is done*/
+  homing_surveyor();
 
   /* Unload and handle packages.*/
   serial_buffer_unloader();
@@ -308,6 +319,148 @@ void set_stepper_sleep(MotorConfig *unit_config, bool on_off_value) {
 
 void set_stepper_block(MotorConfig *unit_config, bool on_off_value) {
   unit_config->block_control = on_off_value;
+}
+
+/*runs homing on all axes.*/
+void start_stepper_homing() {
+  if (system_state == UNINIT) {
+    system_pose[BASENUM] = 3600;
+    system_pose[WRISTNUM] = 3600;
+
+    /*FINDOUT HOW MANY KILOOHMS POTS THEY ARE, I ASSUME 10k, thus,
+    if pot is at center, its voltage will be 1/4, so 1,25V
+    adc value will be 1.25/(5/1023) = ~256
+    */
+    /*TODO, CHECK IF THIS IS THE RIGHT DIRECTION and RIGHT POT FOR MOTOR*/
+
+    adc0_initial_value = analogRead(ANALOG0);
+    adc1_initial_value = analogRead(ANALOG1);
+
+    if (adc0_initial_value > 256) {
+      system_pose[ENDLNUM] = 900;
+    } else if (adc0_initial_value < 256) {
+      system_pose[ENDLNUM] = -900;
+    }
+
+    if (adc1_initial_value > 256) {
+      system_pose[ENDRNUM] = 900;
+    } else if (adc1_initial_value < 256) {
+      system_pose[ENDRNUM] = -900;
+    }
+
+    /* enable them all and RUN */
+    for (int i = 0; i < PCF_COUNT; i++) {
+      set_stepper_block(&stepper_motor[i], 0);
+      set_stepper_drive(&stepper_motor[i], 1);
+      set_stepper_sleep(&stepper_motor[i], 0);
+      stepper_motor[i].is_homing = true;
+    }
+
+    apply_pose(system_pose);
+
+    system_state = HOMING;
+  }
+
+  /* what I could do is,
+  when homing is set,
+  ignore is homed of that motor by setting is_homing (inside control loop)
+  set the setpoint to 360 degrees
+  run profiler
+  ignore set-pose commands received of that motor at that time (inside packet
+  prc)
+  set a surveyor code that keeps track track end stop position.
+  when button is touched,
+  reset current position and setpoint to 0 set homed bit, unset
+  ishoming, set drv enabled,  unset sw block.
+  but with end motors i gotta set it to potentimeter voltage, I should set the
+  direction of it according to the voltage.
+  to keep it quick and dirty, ill adjust the trigger point of it such that once
+  it passes the threshold, its "homed"
+
+  thus the plan is,
+  in this code, change the setpoints of base and wrist to 360 degree
+  check the voltage of pots, according to it set it to 90 degrees or more
+  run profiler
+  enable the drv, control, and set is_homing
+  program -> set pose cmd to ignore poses while is_homing is active
+  continuously check the button of endstops with homing surveyor
+  when the button press, set setpoint and current pos to 0
+
+     */
+}
+
+void homing_surveyor() {
+  /* check if button press is detected of base and */
+
+  /*return if not homing */
+  if (system_state != HOMING) {
+    return;
+  }
+
+  /*TODO check if this IS for base, is button logic good?*/
+  if (digitalRead(DIGITAL0) && stepper_motor[BASENUM].is_homing) {
+    stepper_motor[BASENUM].is_homing = false;
+    stepper_motor[BASENUM].current_position = 0;
+    stepper_motor[BASENUM].position_setpoint = 0;
+    stepper_motor[BASENUM].on_sp = true;
+  }
+
+  if (digitalRead(DIGITAL1) && stepper_motor[WRISTNUM].is_homing) {
+    stepper_motor[WRISTNUM].is_homing = false;
+    stepper_motor[WRISTNUM].current_position = 0;
+    stepper_motor[WRISTNUM].position_setpoint = 0;
+    stepper_motor[WRISTNUM].on_sp = true;
+  }
+
+  /* check adc 0*/
+  if (stepper_motor[ENDLNUM].is_homing) {
+    uint16_t adc0_now = analogRead(ANALOG0);
+    if (adc0_initial_value > 256) {
+      if (adc0_now < 256) {
+        stepper_motor[ENDLNUM].is_homing = false;
+        stepper_motor[ENDLNUM].current_position = 0;
+        stepper_motor[ENDLNUM].position_setpoint = 0;
+        stepper_motor[ENDLNUM].on_sp = true;
+      }
+    } else if (adc0_initial_value < 256) {
+      if (adc0_now > 256) {
+        stepper_motor[ENDLNUM].is_homing = false;
+        stepper_motor[ENDLNUM].current_position = 0;
+        stepper_motor[ENDLNUM].position_setpoint = 0;
+        stepper_motor[ENDLNUM].on_sp = true;
+      }
+    }
+  }
+
+  /* check adc 1*/
+  if (stepper_motor[ENDRNUM].is_homing) {
+    uint16_t adc1_now = analogRead(ANALOG1);
+    if (adc1_initial_value > 256) {
+      if (adc1_now < 256) {
+        stepper_motor[ENDRNUM].is_homing = false;
+        stepper_motor[ENDRNUM].current_position = 0;
+        stepper_motor[ENDRNUM].position_setpoint = 0;
+        stepper_motor[ENDRNUM].on_sp = true;
+      }
+    } else if (adc0_initial_value < 256) {
+      if (adc1_now > 256) {
+        stepper_motor[ENDRNUM].is_homing = false;
+        stepper_motor[ENDRNUM].current_position = 0;
+        stepper_motor[ENDRNUM].position_setpoint = 0;
+        stepper_motor[ENDRNUM].on_sp = true;
+      }
+    }
+  }
+
+  /* if all are done.*/
+  if (!stepper_motor[BASENUM].is_homing && !stepper_motor[WRISTNUM].is_homing &&
+      !stepper_motor[ENDLNUM].is_homing && !stepper_motor[ENDRNUM].is_homing) {
+    /*update syspose for safe measure*/
+    for (int i = 0; i < PCF_COUNT; i++) {
+      system_pose[i] = 0;
+    }
+    system_state = INIT;
+  }
 }
 
 void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize) {
@@ -620,13 +773,6 @@ void stepper_control_loop() {
     return;
   }
 
-  if (!stepper_motor[mtr_index].homed) {
-    // Serial.println("This unit isnt homed, skipping");
-    mtr_index++;
-    mtr_index %= (PCF_COUNT);
-    return;
-  }
-
   /* A step elapsed, time to set next time goal*/
   if (micros() >= stepper_motor[mtr_index].next_step_time) {
     /*capture execution time*/
@@ -739,11 +885,14 @@ void process_packet() {
   switch (command) {
     case 0x01: /* Set pose command */
 
-      // int16_t data0 = (serial_buffer[3] << 8) | serial_buffer[4];   /*base*/
-      // int16_t data1 = (serial_buffer[6] << 8) | serial_buffer[7];   /*wrist*/
-      // int16_t data2 = (serial_buffer[9] << 8) | serial_buffer[10];  /*end
-      // rot*/ int16_t data3 = (serial_buffer[12] << 8) | serial_buffer[13];
-      // /*end ang*/
+      /*  data0       data1      data2      data3
+       *  [BASE ROT] [WRIST ROT] [END ROT] [END ANGLE]
+       */
+
+      /*Ignore this command while a homing procedure is taking place*/
+      if (system_state == HOMING) {
+        return;
+      }
 
       calculate_end_angles(data3, data2);
       system_pose[2] = data1;
@@ -752,13 +901,13 @@ void process_packet() {
       break;
 
     case 0x02: /* UNIT/MOTOR CONFIGURE package. */
-
       /*  data0       data1      data2      data3
-       *  [UNIT NUM] [RATE SET] [VELO SET] [BITMASK DRV/BLK/SLP]
+       *  [UNIT NUM] [RATE SET] [VELO SET] [BITMASK HOME/SLP/BLK/DRV]
        */
 
       /*check if unit number data is in range*/
-      if ((data0 < 0) || data0 >= PCF_COUNT) {
+      /* unit number 0-3 are individual ctrl, if 4 this applies to ALL units, */
+      if ((data0 < 0) || data0 > PCF_COUNT) {
         /*Non existing unit is selected*/
         return;
       }
@@ -770,28 +919,44 @@ void process_packet() {
 
       /*Apply the shits, ignore if applying this if value is 0.*/
       if (data1 != 0) {
-        set_stepper_rate(&stepper_motor[data0], (float)data1);
+        /* if data is 4, apply this change to all units.*/
+        if (data0 == PCF_COUNT) {
+          for (int i = 0; i < PCF_COUNT; i++) {
+            set_stepper_rate(&stepper_motor[i], (float)data1);
+          }
+        } else {
+          set_stepper_rate(&stepper_motor[data0], (float)data1);
+        }
       }
 
       if (data2 != 0) {
-        set_stepper_velocity(&stepper_motor[data0], (float)data2);
+        /* if data is 4, apply this change to all units.*/
+        if (data0 == PCF_COUNT) {
+          for (int i = 0; i < PCF_COUNT; i++) {
+            set_stepper_velocity(&stepper_motor[i], (float)data2);
+          }
+        } else {
+          set_stepper_velocity(&stepper_motor[data0], (float)data2);
+        }
       }
 
       /*at no time, can this be 0.*/
       if (data3 != 0) {
+        if (data0 == PCF_COUNT) {
+          for (int i = 0; i < PCF_COUNT; i++) {
+            set_stepper_drive(&stepper_motor[i], (((uint16_t)data3 >> 0) & 1));
+            set_stepper_block(&stepper_motor[i], (((uint16_t)data3 >> 1) & 1));
+            set_stepper_sleep(&stepper_motor[i], (((uint16_t)data3 >> 2) & 1));
+          }
+        }
         set_stepper_drive(&stepper_motor[data0], (((uint16_t)data3 >> 0) & 1));
         set_stepper_block(&stepper_motor[data0], (((uint16_t)data3 >> 1) & 1));
         set_stepper_sleep(&stepper_motor[data0], (((uint16_t)data3 >> 2) & 1));
       }
-
       break;
 
-    case 0x03: /* Set disabling of control loops of all*/
-      for (int i = 0; i < PCF_COUNT; i++) {
-        set_stepper_block(&stepper_motor[i], (bool)data0);
-      }
-      break;
-
+      // case 0x03:
+      //   break;
       // case 0x04:
       //   break;
       // case 0x05:
