@@ -50,7 +50,7 @@
 /* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
 #define DEFAULT_ROT_ACCEL 45 /*45RPM // 0.75 rev/min^2 */
 
-#define DEFAULT_DRV8825_MODE 0 /*fullstep*/
+#define DEFAULT_DRV8825_MODE 2 /*fullstep*/
 
 // Gear ratios and stepcount
 /* rotor gear tooth / driven gear tooths*/
@@ -257,138 +257,35 @@ void setup() {
       Serial.println("PCF init suc6");
     }
   }
+
+  /*Gotta enable it through uart now*/
+  /*TODO DEBUG, CONFIG INDIVIDUAL AXIS CONFIG LIMITS FOR MOTORS!! */
+  // for (int i = 0; i < PCF_COUNT; i++) {
+  //   set_stepper_block(&stepper_motor[i],
+  //                     1); /*block sw drive SET THIS TO 0 AFTER PULLING*/
+  //   set_stepper_drive(&stepper_motor[i],
+  //                     0); /*enable steppers SET THIS TO 1 AFTER PULLINGs*/
+  //   set_stepper_sleep(&stepper_motor[i], 0); /*disable sleep*/
+
+  //   set_stepper_stepsize(&stepper_motor[i], 2); /*1/4th*/
+
+  //   /*TODO BUGFIX, accelero and shaft velocity code doesn't work. Base
+  //   rotates
+  //    * very slow for apparent "120" RPM. Check where this RPM is calculated
+  //    * to. RPM value impacts inversely again.*/
+  //   set_stepper_rate(&stepper_motor[i], 100);     /*all on 100RPM*/
+  //   set_stepper_velocity(&stepper_motor[i], 120); /*All on 120 RPM*/
+  //   stepper_motor[i].homed = true;
+  //   Serial.print("Cfg'd motor: ");
+  //   Serial.println(i);
+  // }
 }
 
 void loop() {
-  static uint32_t testing_timer;
+  /*TODO put the homing code*/
 
-  // switch (system_state) {
-  //   case UNINIT:
-  //     if (millis() - testing_timer > 2000) {
-  //       /*Enable hardware, but block SW control*/
-  //       for (int i = 0; i < PCF_COUNT; i++) {
-  //         set_stepper_block(&stepper_motor[i], 1);
-  //         set_stepper_drive(&stepper_motor[i], 1);
-  //         set_stepper_sleep(&stepper_motor[i], 0);
-  //         set_stepper_stepsize(&stepper_motor[i], 2);
-
-  //         set_stepper_rate(&stepper_motor[i], 1000);
-  //         set_stepper_velocity(&stepper_motor[i], 500);
-
-  //         stepper_motor[i].homed = true;
-  //         Serial.print("Cfg'd motor: ");
-  //         Serial.println(i);
-  //       }
-
-  //       testing_timer = millis();
-  //       test_states++;
-  //     }
-
-  //     break;
-
-  //   case 1:
-  //     if (millis() - testing_timer > 1000) {
-  //       int16_t motor_angles[] = {0, 0, 0, 0};
-  //       apply_pose(motor_angles);
-  //       Serial.print("all set to 0 0 0 0");
-  //       testing_timer = millis();
-  //       test_states++;
-  //     }
-  //     break;
-
-  //   case 2:
-  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-  //       test_states++;
-  //     }
-  //     break;
-
-  //   case 3: {
-  //     int16_t motor_angles[] = {3600, 2700, 1800, 900};
-  //     apply_pose(motor_angles);
-  //     test_states++;
-  //   } break;
-
-  //   case 4:
-
-  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-  //       Serial.println("Arrived again. Disable motors.");
-
-  //       // for (int i = 0; i < PCF_COUNT; i++) {
-  //       //   set_stepper_block(&stepper_motor[i], 1);
-  //       //   set_stepper_drive(&stepper_motor[i], 0);
-  //       // }
-  //       test_states++;
-  //     }
-  //     break;
-
-  //   case 5:
-
-  //     if (millis() - testing_timer > 1000) {
-  //       int16_t motor_angles[] = {0, 0, 0, 0};
-  //       apply_pose(motor_angles);
-  //       testing_timer = millis();
-  //       test_states++;
-  //     }
-  //     break;
-
-  //   case 6:
-  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-  //       test_states++;
-  //     }
-  //     break;
-
-  //   case 7:
-
-  //     if (millis() - testing_timer > 1000) {
-  //       int16_t motor_angles[] = {0, 0, 0, 0};
-  //       apply_pose(motor_angles);
-  //       testing_timer = millis();
-  //       test_states++;
-  //     }
-  //     break;
-
-  //   case 8:
-  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-  //       test_states++;
-
-  //       // for (int i = 0; i < PCF_COUNT; i++) {
-  //       //   set_stepper_block(&stepper_motor[i], 1);
-  //       //   set_stepper_drive(&stepper_motor[i], 0);
-  //       // }
-  //     }
-  //     break;
-
-  //   case 9:
-
-  //     if (millis() - testing_timer > 1000) {
-  //       int16_t motor_angles[] = {1800, 1800, 1800, 1800};
-  //       apply_pose(motor_angles);
-  //       testing_timer = millis();
-  //       test_states++;
-  //     }
-
-  //     break;
-
-  //   case 10:
-  //     if (stepper_motor[0].on_sp && stepper_motor[1].on_sp &&
-  //         stepper_motor[2].on_sp && stepper_motor[3].on_sp) {
-  //       test_states++;
-
-  //       for (int i = 0; i < PCF_COUNT; i++) {
-  //         set_stepper_block(&stepper_motor[i], 1);
-  //         set_stepper_drive(&stepper_motor[i], 0);
-  //       }
-  //     }
-  //     break;
-
-  //   default:
-  //     break;
-  // }
-
+  /* Unload and handle packages.*/
+  serial_buffer_unloader();
   /*constant polling*/
   stepper_control_loop();
 }
@@ -439,6 +336,7 @@ void set_stepper_rate(MotorConfig *unit_config, float accelerate) {
   unit_config->origin_accel_rate = RPM_TO_STEP_US_SQRD(accelerate);
 }
 
+/* In rpm to internal variables.*/
 void set_stepper_velocity(MotorConfig *unit_config, float maxvelocity) {
   unit_config->origin_max_rot_velocity = RPM_TO_STEP_US_FLT(maxvelocity);
 }
@@ -503,8 +401,10 @@ void motion_profiler(MotorConfig *unit_config) {
   /*and microstepping compensator*/
   unit_config->accel_rate *= (1.0 / (float)(1 << unit_config->stepper_mode));
 
-  /* APPLY GEAR RATIO */
-  unit_config->accel_rate *= (1.0 / (unit_config->shaft_gear_ratio));
+  /*TODO TEST BUGFIX */
+  /* APPLY GEAR RATIO, , potential bug, worse gear ratio means quicker
+   * advancing of RPM between cycles in order to compensate. */
+  unit_config->accel_rate *= (unit_config->shaft_gear_ratio);
 
   /*apply speed scale to velocity */
   unit_config->max_rot_velocity = unit_config->origin_max_rot_velocity *
@@ -514,8 +414,9 @@ void motion_profiler(MotorConfig *unit_config) {
   unit_config->max_rot_velocity *=
       (1.0 / (float)(1 << unit_config->stepper_mode));
 
-  /* Apply the gear ratio modifier*/
-  unit_config->max_rot_velocity *= (1.0 / unit_config->shaft_gear_ratio);
+  /*  TODO TEST BUGFIX */
+  /* Apply the gear ratio modifier TODO same issue as accel rate.*/
+  unit_config->max_rot_velocity *= unit_config->shaft_gear_ratio;
 
   unit_config->accel_sqrt = sqrt(unit_config->accel_rate);
   unit_config->min_rot_velocity = unit_config->accel_sqrt - 1;
@@ -823,27 +724,75 @@ void process_packet() {
     return;  // Invalid packet
   }
 
+  int16_t data0 = (serial_buffer[3] << 8) | serial_buffer[4];
+  int16_t data1 = (serial_buffer[6] << 8) | serial_buffer[7];
+  int16_t data2 = (serial_buffer[9] << 8) | serial_buffer[10];
+  int16_t data3 = (serial_buffer[12] << 8) | serial_buffer[13];
+
   uint8_t command = serial_buffer[1];
 
   switch (command) {
     case 0x01: /* Set pose command */
 
-      int16_t baseAngle = (serial_buffer[3] << 8) | serial_buffer[4];
-      int16_t rotation = (serial_buffer[6] << 8) | serial_buffer[7];
-      int16_t endRotation = (serial_buffer[9] << 8) | serial_buffer[10];
-      int16_t endAngle = (serial_buffer[12] << 8) | serial_buffer[13];
+      // int16_t data0 = (serial_buffer[3] << 8) | serial_buffer[4];   /*base*/
+      // int16_t data1 = (serial_buffer[6] << 8) | serial_buffer[7];   /*wrist*/
+      // int16_t data2 = (serial_buffer[9] << 8) | serial_buffer[10];  /*end
+      // rot*/ int16_t data3 = (serial_buffer[12] << 8) | serial_buffer[13];
+      // /*end ang*/
 
-      calculate_end_angles(endAngle, endRotation);
-      system_pose[2] = rotation;
-      system_pose[3] = baseAngle;
-
+      calculate_end_angles(data3, data2);
+      system_pose[2] = data1;
+      system_pose[3] = data0;
       apply_pose(system_pose);
+      break;
+
+    case 0x02: /* UNIT/MOTOR CONFIGURE package. */
+
+      /*  data0       data1      data2      data3
+       *  [UNIT NUM] [RATE SET] [VELO SET] [BITMASK DRV/BLK/SLP]
+       */
+
+      /*check if unit number data is in range*/
+      if ((data0 < 0) || data0 >= PCF_COUNT) {
+        /*Non existing unit is selected*/
+        return;
+      }
+
+      /*rate and velo can't be negative*/
+      if ((data1 < 0) | (data2 < 0) | (data3 < 0)) {
+        return;
+      }
+
+      /*Apply the shits, ignore if applying this if value is 0.*/
+      if (data1 != 0) {
+        set_stepper_rate(&stepper_motor[data0], (float)data1);
+      }
+
+      if (data2 != 0) {
+        set_stepper_velocity(&stepper_motor[data0], (float)data2);
+      }
+
+      /*at no time, can this be 0.*/
+      if (data3 != 0) {
+        set_stepper_drive(&stepper_motor[data0], (((uint16_t)data3 >> 0) & 1));
+        set_stepper_block(&stepper_motor[data0], (((uint16_t)data3 >> 1) & 1));
+        set_stepper_sleep(&stepper_motor[data0], (((uint16_t)data3 >> 2) & 1));
+      }
 
       break;
 
-    case 0x02:
-      Serial.println("Coolbeans");
+    case 0x03: /* Set disabling of control loops of all*/
+      for (int i = 0; i < PCF_COUNT; i++) {
+        set_stepper_block(&stepper_motor[i], (bool)data0);
+      }
       break;
+
+      // case 0x04:
+      //   break;
+      // case 0x05:
+      //   break;
+      // case 0x06:
+      //   break;
 
     default:
       break;
