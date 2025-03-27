@@ -40,6 +40,11 @@
 
 #define SERIAL_BUF_SIZE 32 /*bytes to hold in buf*/
 
+#define BASENUM 3
+#define WRISTNUM 2
+#define ENDLNUM 1
+#define ENDRNUM 0
+
 /* Is (60*10^6)/ (RPM * 200), returns uS per rotation */
 /* Works RPM -> STEP uS and vice versa/*/
 #define RPM_TO_STEP_US_FLT(x) (600000.0f / (x * 2.0f))
