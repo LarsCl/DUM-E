@@ -272,34 +272,13 @@ void setup() {
       Serial.println("PCF init suc6");
     }
   }
-
-  /*Gotta enable it through uart now*/
-  /*TODO DEBUG, CONFIG INDIVIDUAL AXIS CONFIG LIMITS FOR MOTORS!! */
-  // for (int i = 0; i < PCF_COUNT; i++) {
-  //   set_stepper_block(&stepper_motor[i],
-  //                     1); /*block sw drive SET THIS TO 0 AFTER PULLING*/
-  //   set_stepper_drive(&stepper_motor[i],
-  //                     0); /*enable steppers SET THIS TO 1 AFTER PULLINGs*/
-  //   set_stepper_sleep(&stepper_motor[i], 0); /*disable sleep*/
-
-  //   set_stepper_stepsize(&stepper_motor[i], 2); /*1/4th*/
-
-  //   /*TODO BUGFIX, accelero and shaft velocity code doesn't work. Base
-  //   rotates
-  //    * very slow for apparent "120" RPM. Check where this RPM is calculated
-  //    * to. RPM value impacts inversely again.*/
-  //   set_stepper_rate(&stepper_motor[i], 100);     /*all on 100RPM*/
-  //   set_stepper_velocity(&stepper_motor[i], 120); /*All on 120 RPM*/
-  //   stepper_motor[i].homed = true;
-  //   Serial.print("Cfg'd motor: ");
-  //   Serial.println(i);
-  // }
+  /* this one should be slow*/
+  set_stepper_velocity(&stepper_motor[BASENUM], 1);
 }
 
 void loop() {
   /*Tracks button states and whether homing is done*/
   homing_surveyor();
-
   /* Unload and handle packages.*/
   serial_buffer_unloader();
   /*constant polling*/
@@ -331,6 +310,7 @@ void start_stepper_homing() {
     if pot is at center, its voltage will be 1/4, so 1,25V
     adc value will be 1.25/(5/1023) = ~256
     */
+
     /*TODO, CHECK IF THIS IS THE RIGHT DIRECTION and RIGHT POT FOR MOTOR*/
 
     adc0_initial_value = analogRead(ANALOG0);
@@ -360,38 +340,10 @@ void start_stepper_homing() {
 
     system_state = HOMING;
   }
-
-  /* what I could do is,
-  when homing is set,
-  ignore is homed of that motor by setting is_homing (inside control loop)
-  set the setpoint to 360 degrees
-  run profiler
-  ignore set-pose commands received of that motor at that time (inside packet
-  prc)
-  set a surveyor code that keeps track track end stop position.
-  when button is touched,
-  reset current position and setpoint to 0 set homed bit, unset
-  ishoming, set drv enabled,  unset sw block.
-  but with end motors i gotta set it to potentimeter voltage, I should set the
-  direction of it according to the voltage.
-  to keep it quick and dirty, ill adjust the trigger point of it such that once
-  it passes the threshold, its "homed"
-
-  thus the plan is,
-  in this code, change the setpoints of base and wrist to 360 degree
-  check the voltage of pots, according to it set it to 90 degrees or more
-  run profiler
-  enable the drv, control, and set is_homing
-  program -> set pose cmd to ignore poses while is_homing is active
-  continuously check the button of endstops with homing surveyor
-  when the button press, set setpoint and current pos to 0
-
-     */
 }
 
+/* observe button states and finish homing when done*/
 void homing_surveyor() {
-  /* check if button press is detected of base and */
-
   /*return if not homing */
   if (system_state != HOMING) {
     return;
@@ -459,6 +411,7 @@ void homing_surveyor() {
     for (int i = 0; i < PCF_COUNT; i++) {
       system_pose[i] = 0;
     }
+    apply_pose(system_pose);
     system_state = INIT;
   }
 }
@@ -548,10 +501,6 @@ void motion_profiler(MotorConfig *unit_config) {
    *
    * This implies,  sqrd(Tacc) - 1 is out minimum speed using this eq.
    */
-
-  /*TODO, keep te basis settings in the motor memory, but apply period time
-   * compensation due to microstepping and movement speed scales within this
-   * function alone. ALSO APPLY GEAR RATIOS HERE.*/
 
   /* apply speed scale acceleration*/
   unit_config->accel_rate = unit_config->origin_accel_rate *
@@ -702,12 +651,7 @@ void synchromizer() {
   /*start green texts*/
   Serial.println("\033[1;32m Synchromizer DEBUG START");
 
-  // Serial.println("\033[1;32m bold PRE-SETUP TEST \033[0m COLORS\n");
-  // Serial.println("\033[1;32m Green");
-  // Serial.println("\033[31;1;4m RedUnder!\033[0m");
-
   /*run everything with scale 1*/
-
   for (int i = 0; i < PCF_COUNT; i++) {
     Serial.print("Re-set scale to 1.0 of U: ");
     Serial.println(i);
@@ -767,7 +711,6 @@ void stepper_control_loop() {
   }
 
   if (stepper_motor[mtr_index].block_control) {
-    // Serial.println("This unit is blocked, skipping");
     mtr_index++;
     mtr_index %= (PCF_COUNT);
     return;
@@ -834,15 +777,6 @@ void stepper_control_loop() {
   mtr_index %= (PCF_COUNT);
 }
 
-/*Command structure:
-* [COMMAND TYPE] [DATA]........\n
-*
-* CMDS:
-*   SETPOSE - int16, int16, int16, int16
-
-*   GETTIME - (returned) microseconds in uint32
-*/
-
 void serial_buffer_unloader() {
   static uint8_t bufferIndex;
   static uint32_t lastByteTime;
@@ -885,14 +819,14 @@ void process_packet() {
   switch (command) {
     case 0x01: /* Set pose command */
 
-      /*  data0       data1      data2      data3
-       *  [BASE ROT] [WRIST ROT] [END ROT] [END ANGLE]
-       */
-
       /*Ignore this command while a homing procedure is taking place*/
       if (system_state == HOMING) {
         return;
       }
+
+      /*  data0       data1      data2      data3
+       *  [BASE ROT] [WRIST ROT] [END ROT] [END ANGLE]
+       */
 
       calculate_end_angles(data3, data2);
       system_pose[2] = data1;
@@ -948,21 +882,16 @@ void process_packet() {
             set_stepper_block(&stepper_motor[i], (((uint16_t)data3 >> 1) & 1));
             set_stepper_sleep(&stepper_motor[i], (((uint16_t)data3 >> 2) & 1));
           }
+        } else {
+          set_stepper_drive(&stepper_motor[data0],
+                            (((uint16_t)data3 >> 0) & 1));
+          set_stepper_block(&stepper_motor[data0],
+                            (((uint16_t)data3 >> 1) & 1));
+          set_stepper_sleep(&stepper_motor[data0],
+                            (((uint16_t)data3 >> 2) & 1));
         }
-        set_stepper_drive(&stepper_motor[data0], (((uint16_t)data3 >> 0) & 1));
-        set_stepper_block(&stepper_motor[data0], (((uint16_t)data3 >> 1) & 1));
-        set_stepper_sleep(&stepper_motor[data0], (((uint16_t)data3 >> 2) & 1));
       }
       break;
-
-      // case 0x03:
-      //   break;
-      // case 0x04:
-      //   break;
-      // case 0x05:
-      //   break;
-      // case 0x06:
-      //   break;
 
     default:
       break;
