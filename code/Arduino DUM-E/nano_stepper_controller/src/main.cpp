@@ -143,7 +143,7 @@ void set_stepper_block(MotorConfig *unit_config, bool onoffvalue);
 /* Eep. */
 void set_stepper_sleep(MotorConfig *unit_config, bool on_off_value);
 
-void start_stepper_homing(MotorConfig *unit_config);
+void start_stepper_homing();
 
 /* 0 is fullstep, 1 is 1/2, 2 is 1/4, 3 is 1/8, 4 is 1/16, 5 is 1/32 */
 void set_stepper_stepsize(MotorConfig *unit_config, uint8_t stepsize);
@@ -836,7 +836,7 @@ void process_packet() {
 
     case 0x02: /* UNIT/MOTOR CONFIGURE package. */
       /*  data0       data1      data2      data3
-       *  [UNIT NUM] [RATE SET] [VELO SET] [BITMASK HOME/SLP/BLK/DRV]
+       *  [UNIT NUM] [RATE SET] [VELO SET] [BITMASK SLP/BLK/DRV]
        */
 
       /*check if unit number data is in range*/
@@ -891,6 +891,13 @@ void process_packet() {
                             (((uint16_t)data3 >> 2) & 1));
         }
       }
+      break;
+
+    case 0x03: /*start homing*/
+      if (data0 == 10) {
+        start_stepper_homing();
+      }
+
       break;
 
     default:
