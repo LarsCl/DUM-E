@@ -51,9 +51,9 @@
 #define RPM_TO_STEP_US_SQRD(x) (600000000000.0 / (x * 2.0))
 
 /* Maximum STEP pulse frequency: 1/((60/120)/200)=400Hz */
-#define DEFAULT_MAX_ROT_VEL 120 /*120RPM*/
+#define DEFAULT_MAX_ROT_VEL 60 /*120RPM*/
 /* Acceleration is (45/60) (rev/min)/min, thus 0.75 min/s^2 */
-#define DEFAULT_ROT_ACCEL 45 /*45RPM // 0.75 rev/min^2 */
+#define DEFAULT_ROT_ACCEL 30 /*45RPM // 0.75 rev/min^2 */
 
 #define DEFAULT_DRV8825_MODE 2 /*fullstep*/
 
@@ -265,6 +265,12 @@ void setup() {
     stepper_motor[i].unit_pcf->write(M1_PIN, 0); /*fullstep*/
     stepper_motor[i].unit_pcf->write(M2_PIN, 0); /*fullstep*/
 
+    /*Use functions*/
+    set_stepper_stepsize(&stepper_motor[i], 2);
+    set_stepper_drive(&stepper_motor[i], 1);
+    set_stepper_block(&stepper_motor[i], 0);
+    set_stepper_sleep(&stepper_motor[i], 0);
+
     /*Test if PCF is OK (reachable on I2C)*/
     if (!stepper_motor[i].unit_pcf->isConnected()) {
       Serial.println("Failed!, PCF unit can't be found on I2C bus.");
@@ -272,13 +278,21 @@ void setup() {
       Serial.println("PCF init suc6");
     }
   }
+
   /* this one should be slow*/
-  set_stepper_velocity(&stepper_motor[BASENUM], 1);
+  set_stepper_velocity(&stepper_motor[BASENUM], 4);
+  set_stepper_rate(&stepper_motor[BASENUM], 5);
+
+  /*Default overrides*/
+
+  /*Have to test gearbox ratio/accelo*/
+  /*If that is good, check homing*/
+  system_state = INIT;
 }
 
 void loop() {
   /*Tracks button states and whether homing is done*/
-  homing_surveyor();
+  // homing_surveyor();
   /* Unload and handle packages.*/
   serial_buffer_unloader();
   /*constant polling*/
