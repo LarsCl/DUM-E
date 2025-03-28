@@ -266,6 +266,7 @@ void setup() {
     stepper_motor[i].unit_pcf->write(M2_PIN, 0); /*fullstep*/
 
     /*Use functions*/
+    /*TODO, DEBUG OVERWRITES change it to disable when dbg done*/
     set_stepper_stepsize(&stepper_motor[i], 2);
     set_stepper_drive(&stepper_motor[i], 1);
     set_stepper_block(&stepper_motor[i], 0);
@@ -522,7 +523,6 @@ void motion_profiler(MotorConfig *unit_config) {
   /*and microstepping compensator*/
   unit_config->accel_rate *= (1.0 / (float)(1 << unit_config->stepper_mode));
 
-  /*TODO TEST BUGFIX */
   /* APPLY GEAR RATIO, , potential bug, worse gear ratio means quicker
    * advancing of RPM between cycles in order to compensate. */
   unit_config->accel_rate *= (unit_config->shaft_gear_ratio);
@@ -535,7 +535,6 @@ void motion_profiler(MotorConfig *unit_config) {
   unit_config->max_rot_velocity *=
       (1.0 / (float)(1 << unit_config->stepper_mode));
 
-  /*  TODO TEST BUGFIX */
   /* Apply the gear ratio modifier TODO same issue as accel rate.*/
   unit_config->max_rot_velocity *= unit_config->shaft_gear_ratio;
 
@@ -843,8 +842,8 @@ void process_packet() {
        */
 
       calculate_end_angles(data3, data2);
-      system_pose[2] = data1;
-      system_pose[3] = data0;
+      system_pose[WRISTNUM] = data1;
+      system_pose[BASENUM] = -data0;
       apply_pose(system_pose);
       break;
 
