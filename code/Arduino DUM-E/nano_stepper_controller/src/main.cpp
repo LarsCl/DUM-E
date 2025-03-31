@@ -911,6 +911,55 @@ void process_packet() {
         start_stepper_homing();
       }
 
+    case 0x04: /*GET POS, @PIM comment out debug code, or write a code to detect
+                  this sequence*/
+
+      Serial.print("C");
+      Serial.print(4);
+      Serial.print("B");
+      Serial.print((int16_t)stepper_motor[0].current_position);
+      Serial.print("W");
+      Serial.print((int16_t)stepper_motor[1].current_position);
+      Serial.print("R");
+      Serial.print((int16_t)stepper_motor[2].current_position);
+      Serial.print("A");
+      Serial.print((int16_t)stepper_motor[3].current_position);
+
+      break;
+
+    case 0x05: /*GET VELO, @PIM comment out debug code, or write a code to
+    detect this sequence*/
+
+      /*reverse calc.*/
+      /*test this pls*/
+
+      uint16_t mot0 = (stepper_motor[0].current_rot_velocity /
+                       stepper_motor[0].shaft_gear_ratio) *
+                      (float)(1 << stepper_motor[0].stepper_mode) * 2.0;
+
+      uint16_t mot1 = (stepper_motor[1].current_rot_velocity /
+                       stepper_motor[1].shaft_gear_ratio) *
+                      (float)(1 << stepper_motor[1].stepper_mode) * 2.0;
+
+      uint16_t mot2 = (stepper_motor[2].current_rot_velocity /
+                       stepper_motor[2].shaft_gear_ratio) *
+                      (float)(1 << stepper_motor[2].stepper_mode) * 2.0;
+
+      uint16_t mot3 = (stepper_motor[3].current_rot_velocity /
+                       stepper_motor[3].shaft_gear_ratio) *
+                      (float)(1 << stepper_motor[3].stepper_mode) * 2.0;
+
+      Serial.print("C");
+      Serial.print(5);
+      Serial.print("B");
+      Serial.print(mot0);
+      Serial.print("W");
+      Serial.print(mot1);
+      Serial.print("R");
+      Serial.print(mot2);
+      Serial.print("A");
+      Serial.print(mot3);
+
       break;
 
     default:
