@@ -913,54 +913,66 @@ void process_packet() {
 
     case 0x04: /*GET POS, @PIM comment out debug code, or write a code to detect
                   this sequence*/
+    {
+      float positions_in_angle[4] = {0, 0, 0, 0};
+
+      for (int i = 0; i < PCF_COUNT; i++) {
+        /*Get motor step movement range and map it to 360 degrees.*/
+        float steprange = (float)(200 << stepper_motor[i].stepper_mode) /
+                          stepper_motor[i].shaft_gear_ratio;
+
+        /* Dont forget input is in deca DEGREES*/
+        float mapping_factor = ((float)steprange / 3600.0f);
+
+        /*((1600/3600)*wantedangle). Thus, 0 degree position is setpoint 0
+         * steps. When degree is 90, step would be in the example above 400.
+         */
+        positions_in_angle[i] =
+            (float)stepper_motor[i].current_position / mapping_factor;
+      }
 
       Serial.print("C");
       Serial.print(4);
       Serial.print("B");
-      Serial.print((int16_t)stepper_motor[0].current_position);
+      Serial.print((int16_t)round(positions_in_angle[0]));
       Serial.print("W");
-      Serial.print((int16_t)stepper_motor[1].current_position);
+      Serial.print((int16_t)round(positions_in_angle[0]));
       Serial.print("R");
-      Serial.print((int16_t)stepper_motor[2].current_position);
+      Serial.print((int16_t)round(positions_in_angle[0]));
       Serial.print("A");
-      Serial.print((int16_t)stepper_motor[3].current_position);
+      Serial.print((int16_t)round(positions_in_angle[0]));
 
       break;
-
+    }
+    
     case 0x05: /*GET VELO, @PIM comment out debug code, or write a code to
     detect this sequence*/
-
+    {
       /*reverse calc.*/
       /*test this pls*/
 
-      uint16_t mot0 = (stepper_motor[0].current_rot_velocity /
-                       stepper_motor[0].shaft_gear_ratio) *
-                      (float)(1 << stepper_motor[0].stepper_mode) * 2.0;
+      int16_t motor_rpms[PCF_COUNT] = {0, 0, 0, 0};
 
-      uint16_t mot1 = (stepper_motor[1].current_rot_velocity /
-                       stepper_motor[1].shaft_gear_ratio) *
-                      (float)(1 << stepper_motor[1].stepper_mode) * 2.0;
-
-      uint16_t mot2 = (stepper_motor[2].current_rot_velocity /
-                       stepper_motor[2].shaft_gear_ratio) *
-                      (float)(1 << stepper_motor[2].stepper_mode) * 2.0;
-
-      uint16_t mot3 = (stepper_motor[3].current_rot_velocity /
-                       stepper_motor[3].shaft_gear_ratio) *
-                      (float)(1 << stepper_motor[3].stepper_mode) * 2.0;
+      for (int i = 0; i < PCF_COUNT; i++) {
+        /*calculate the reverse of it, returns velocity in RPMS * 10*/
+        /* proof: (600000 / (60 * 2)*(1/4)*0.5) = 625
+          (3000000*0.5)/(625*4) = 600 (divide by 10 later to get .1 decimals )*/
+        motor_rpms[i] = ((3000000.0f * stepper_motor[i].shaft_gear_ratio) /
+                         (stepper_motor[i].current_rot_velocity *
+                          (float)(1 << stepper_motor[i].stepper_mode)));
+      }
 
       Serial.print("C");
       Serial.print(5);
       Serial.print("B");
-      Serial.print(mot0);
+      Serial.print(motor_rpms[0]);
       Serial.print("W");
-      Serial.print(mot1);
+      Serial.print(motor_rpms[1]);
       Serial.print("R");
-      Serial.print(mot2);
+      Serial.print(motor_rpms[2]);
       Serial.print("A");
-      Serial.print(mot3);
-
-      break;
+      Serial.print(motor_rpms[3]);
+    } break;
 
     default:
       break;
