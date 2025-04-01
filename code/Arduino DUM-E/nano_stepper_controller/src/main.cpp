@@ -936,15 +936,15 @@ void process_packet() {
       Serial.print("B");
       Serial.print((int16_t)round(positions_in_angle[0]));
       Serial.print("W");
-      Serial.print((int16_t)round(positions_in_angle[0]));
+      Serial.print((int16_t)round(positions_in_angle[1]));
       Serial.print("R");
-      Serial.print((int16_t)round(positions_in_angle[0]));
+      Serial.print((int16_t)round(positions_in_angle[2]));
       Serial.print("A");
-      Serial.print((int16_t)round(positions_in_angle[0]));
+      Serial.print((int16_t)round(positions_in_angle[3]));
 
       break;
     }
-    
+
     case 0x05: /*GET VELO, @PIM comment out debug code, or write a code to
     detect this sequence*/
     {
