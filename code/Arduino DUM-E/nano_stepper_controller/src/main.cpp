@@ -281,8 +281,8 @@ void setup() {
   }
 
   /* this one should be slow*/
-  set_stepper_velocity(&stepper_motor[BASENUM], 4);
-  set_stepper_rate(&stepper_motor[BASENUM], 5);
+  // set_stepper_velocity(&stepper_motor[BASENUM], 4);
+  // set_stepper_rate(&stepper_motor[BASENUM], 5);
 
   /*Default overrides*/
 
@@ -480,9 +480,9 @@ void motion_profiler(MotorConfig *unit_config) {
       unit_config->position_setpoint - unit_config->current_position;
 
   /*white text*/
-  Serial.print("\033[0m Profiler \n\r");
-  Serial.print("Error is: ");
-  Serial.println(steperror);
+  // Serial.print("\033[0m Profiler \n\r");
+  // Serial.print("Error is: ");
+  // Serial.println(steperror);
 
   /*Set the direction pin of unit*/
   /*set direction of movement*/
@@ -662,15 +662,15 @@ void synchromizer() {
    * */
 
   /*start green texts*/
-  Serial.println("\033[1;32m Synchromizer DEBUG START");
+  // Serial.println("\033[1;32m Synchromizer DEBUG START");
 
   /*run everything with scale 1*/
   for (int i = 0; i < PCF_COUNT; i++) {
-    Serial.print("Re-set scale to 1.0 of U: ");
-    Serial.println(i);
+    // Serial.print("Re-set scale to 1.0 of U: ");
+    // Serial.println(i);
     stepper_motor[i].movement_speed_scale = 1.0f;
-    motion_profiler(&stepper_motor[i]);
-    Serial.println("\033[1;32m");
+    // motion_profiler(&stepper_motor[i]);
+    // Serial.println("\033[1;32m");
   }
 
   uint32_t longest_time = 0;
@@ -714,8 +714,8 @@ void stepper_control_loop() {
   if (pos_error == 0) {
     // Serial.println("Is on SP.");
     stepper_motor[mtr_index].on_sp = true;
-    stepper_motor[mtr_index].current_rot_velocity =
-        stepper_motor[mtr_index].min_rot_velocity;
+    // stepper_motor[mtr_index].s =
+    //     stepper_motor[mtr_index].min_rot_velocity;
     mtr_index++;
     mtr_index %= (PCF_COUNT);
     return;
@@ -742,31 +742,31 @@ void stepper_control_loop() {
     }
     interrupts();
 
-    uint32_t abs_pos_err = abs(pos_error);
+    // uint32_t abs_pos_err = abs(pos_error);
 
     /*Check if we should be accelerating or decelerating*/
-    if (abs_pos_err >= stepper_motor[mtr_index].accel_dowto) {
-      /*Increase velocity*/
-      stepper_motor[mtr_index].current_rot_velocity =
-          (stepper_motor[mtr_index].current_rot_velocity *
-           stepper_motor[mtr_index].accel_rate) /
-          (stepper_motor[mtr_index].accel_rate +
-           (stepper_motor[mtr_index].current_rot_velocity *
-            stepper_motor[mtr_index].current_rot_velocity));
+    // if (abs_pos_err >= stepper_motor[mtr_index].accel_dowto) {
+    //   /*Increase velocity*/
+    //   stepper_motor[mtr_index].current_rot_velocity =
+    //       (stepper_motor[mtr_index].current_rot_velocity *
+    //        stepper_motor[mtr_index].accel_rate) /
+    //       (stepper_motor[mtr_index].accel_rate +
+    //        (stepper_motor[mtr_index].current_rot_velocity *
+    //         stepper_motor[mtr_index].current_rot_velocity));
 
-    } else if (abs_pos_err <= stepper_motor[mtr_index].decel_from) {
-      // /*decrease velocity*/
-      float newper = (stepper_motor[mtr_index].current_rot_velocity *
-                      stepper_motor[mtr_index].accel_rate) /
-                     (stepper_motor[mtr_index].accel_rate -
-                      (stepper_motor[mtr_index].current_rot_velocity *
-                       stepper_motor[mtr_index].current_rot_velocity));
+    // } else if (abs_pos_err <= stepper_motor[mtr_index].decel_from) {
+    //   // /*decrease velocity*/
+    //   float newper = (stepper_motor[mtr_index].current_rot_velocity *
+    //                   stepper_motor[mtr_index].accel_rate) /
+    //                  (stepper_motor[mtr_index].accel_rate -
+    //                   (stepper_motor[mtr_index].current_rot_velocity *
+    //                    stepper_motor[mtr_index].current_rot_velocity));
 
-      /*Limit / clip*/
-      if ((stepper_motor[mtr_index].min_rot_velocity + 1) > newper) {
-        stepper_motor[mtr_index].current_rot_velocity = newper;
-      }
-    }
+    //   /*Limit / clip*/
+    //   if ((stepper_motor[mtr_index].min_rot_velocity + 1) > newper) {
+    //     stepper_motor[mtr_index].current_rot_velocity = newper;
+    //   }
+    // }
 
     /*Set when the step ends*/
     stepper_motor[mtr_index].next_step_time =
@@ -848,62 +848,63 @@ void process_packet() {
       break;
 
     case 0x02: /* UNIT/MOTOR CONFIGURE package. */
-      /*  data0       data1      data2      data3
-       *  [UNIT NUM] [RATE SET] [VELO SET] [BITMASK SLP/BLK/DRV]
-       */
+      // /*  data0       data1      data2      data3
+      //  *  [UNIT NUM] [RATE SET] [VELO SET] [BITMASK SLP/BLK/DRV]
+      //  */
 
-      /*check if unit number data is in range*/
-      /* unit number 0-3 are individual ctrl, if 4 this applies to ALL units, */
-      if ((data0 < 0) || data0 > PCF_COUNT) {
-        /*Non existing unit is selected*/
-        return;
-      }
+      // /*check if unit number data is in range*/
+      // /* unit number 0-3 are individual ctrl, if 4 this applies to ALL units,
+      // */ if ((data0 < 0) || data0 > PCF_COUNT) {
+      //   /*Non existing unit is selected*/
+      //   return;
+      // }
 
-      /*rate and velo can't be negative*/
-      if ((data1 < 0) | (data2 < 0) | (data3 < 0)) {
-        return;
-      }
+      // /*rate and velo can't be negative*/
+      // if ((data1 < 0) | (data2 < 0) | (data3 < 0)) {
+      //   return;
+      // }
 
-      /*Apply the shits, ignore if applying this if value is 0.*/
-      if (data1 != 0) {
-        /* if data is 4, apply this change to all units.*/
-        if (data0 == PCF_COUNT) {
-          for (int i = 0; i < PCF_COUNT; i++) {
-            set_stepper_rate(&stepper_motor[i], (float)data1);
-          }
-        } else {
-          set_stepper_rate(&stepper_motor[data0], (float)data1);
-        }
-      }
+      // /*Apply the shits, ignore if applying this if value is 0.*/
+      // if (data1 != 0) {
+      //   /* if data is 4, apply this change to all units.*/
+      //   if (data0 == PCF_COUNT) {
+      //     for (int i = 0; i < PCF_COUNT; i++) {
+      //       set_stepper_rate(&stepper_motor[i], (float)data1);
+      //     }
+      //   } else {
+      //     set_stepper_rate(&stepper_motor[data0], (float)data1);
+      //   }
+      // }
 
-      if (data2 != 0) {
-        /* if data is 4, apply this change to all units.*/
-        if (data0 == PCF_COUNT) {
-          for (int i = 0; i < PCF_COUNT; i++) {
-            set_stepper_velocity(&stepper_motor[i], (float)data2);
-          }
-        } else {
-          set_stepper_velocity(&stepper_motor[data0], (float)data2);
-        }
-      }
+      // if (data2 != 0) {
+      //   /* if data is 4, apply this change to all units.*/
+      //   if (data0 == PCF_COUNT) {
+      //     for (int i = 0; i < PCF_COUNT; i++) {
+      //       set_stepper_velocity(&stepper_motor[i], (float)data2);
+      //     }
+      //   } else {
+      //     set_stepper_velocity(&stepper_motor[data0], (float)data2);
+      //   }
+      // }
 
-      /*at no time, can this be 0.*/
-      if (data3 != 0) {
-        if (data0 == PCF_COUNT) {
-          for (int i = 0; i < PCF_COUNT; i++) {
-            set_stepper_drive(&stepper_motor[i], (((uint16_t)data3 >> 0) & 1));
-            set_stepper_block(&stepper_motor[i], (((uint16_t)data3 >> 1) & 1));
-            set_stepper_sleep(&stepper_motor[i], (((uint16_t)data3 >> 2) & 1));
-          }
-        } else {
-          set_stepper_drive(&stepper_motor[data0],
-                            (((uint16_t)data3 >> 0) & 1));
-          set_stepper_block(&stepper_motor[data0],
-                            (((uint16_t)data3 >> 1) & 1));
-          set_stepper_sleep(&stepper_motor[data0],
-                            (((uint16_t)data3 >> 2) & 1));
-        }
-      }
+      // /*at no time, can this be 0.*/
+      // if (data3 != 0) {
+      //   if (data0 == PCF_COUNT) {
+      //     for (int i = 0; i < PCF_COUNT; i++) {
+      //       set_stepper_drive(&stepper_motor[i], (((uint16_t)data3 >> 0) &
+      //       1)); set_stepper_block(&stepper_motor[i], (((uint16_t)data3 >> 1)
+      //       & 1)); set_stepper_sleep(&stepper_motor[i], (((uint16_t)data3 >>
+      //       2) & 1));
+      //     }
+      //   } else {
+      //     set_stepper_drive(&stepper_motor[data0],
+      //                       (((uint16_t)data3 >> 0) & 1));
+      //     set_stepper_block(&stepper_motor[data0],
+      //                       (((uint16_t)data3 >> 1) & 1));
+      //     set_stepper_sleep(&stepper_motor[data0],
+      //                       (((uint16_t)data3 >> 2) & 1));
+      //   }
+      // }
       break;
 
     case 0x03: /*start homing*/
@@ -974,6 +975,96 @@ void process_packet() {
       Serial.print(motor_rpms[3]);
     } break;
 
+    case 0x06: /*Set velocity GLOBAL */
+               /* Change the current velocity of the motors */
+
+      /*  data0     data1     data2     data3
+       *  [MOTO0]   [MOTO1]   [MOTO2]   [MOTO3]
+       */
+
+      /* find a way to calculate the current velocity for individual motors in a
+       * for loop
+       */
+      {
+        uint16_t arrayofdatas[PCF_COUNT] = {data0, data1, data2, data3};
+
+        for (int i = 0; i < PCF_COUNT; i++) {
+          stepper_motor[i].current_rot_velocity =
+              RPM_TO_STEP_US_FLT(((float)arrayofdatas[i] / 10.0f));
+
+          // *apply speed scale to velocity */
+          stepper_motor[i].current_rot_velocity *=
+              (1.0 / (float)(1 << stepper_motor[i].stepper_mode));
+
+          stepper_motor[i].current_rot_velocity *=
+              stepper_motor[i].shaft_gear_ratio;
+        }
+
+        break;
+      }
+    case 0x07: /*Set setpoint of all motors*/
+
+      // Angles in degrees and convert it into moto sepoin
+
+      /*  data0     data1     data2     data3
+       *  [MOTO0]   [MOTO1]   [MOTO2]   [MOTO3]
+                              ANGLE     ROT DIFF
+       */
+
+      {
+        /*in angles*/ /*THIS IS THE RECEIVED END ANGLES NOT POSE!!!!*/
+        int16_t wanted_pose[PCF_COUNT] = {data0, data1, data2, data3};
+
+        /*apply here the end effector motor calculation*/
+
+        /* apply angle first (abspos) */
+        int16_t effleft = data2;
+        int16_t effright = -data2;
+
+        /* apply rotation over it*/
+        effleft += data3;
+        effright += data3;
+
+        /* throw it into the syspos*/
+        // system_pose[0] = effleft;
+        // system_pose[1] = effright;
+
+        wanted_pose[ENDLNUM] = effleft;
+        wanted_pose[ENDRNUM] = effright;
+
+        /*overwritten the angles in the same memory thingie, now the setpoints
+         * of hte motors are used on the spots where we got the end thingies.*/
+
+        /*apply setpoint from converted degrees*/
+        for (int i = 0; i < PCF_COUNT; i++) {
+          /*Get motor step movement range and map it to 360 degrees.*/
+          float steprange = (float)(200 << stepper_motor[i].stepper_mode) /
+                            stepper_motor[i].shaft_gear_ratio;
+
+          /* Dont forget input is in deca DEGREES*/
+          float mapping_factor = ((float)steprange / 3600.0f);
+
+          /*((1600/3600)*wantedangle). Thus, 0 degree position is setpoint 0
+           * steps. When degree is 90, step would be in the example above 400.
+           */
+          int pose_step_setpoint =
+              (int)(mapping_factor * (float)wanted_pose[i]);
+
+              
+          set_stepper_setpoint(&stepper_motor[i], pose_step_setpoint);
+
+          int steperror = stepper_motor[i].position_setpoint -
+                          stepper_motor[i].current_position;
+
+          if (steperror > 0) {
+            stepper_motor[i].unit_pcf->write(DIR_PIN, 1);
+          } else {
+            stepper_motor[i].unit_pcf->write(DIR_PIN, 0);
+          }
+        }
+
+        break;
+      }
     default:
       break;
   }
