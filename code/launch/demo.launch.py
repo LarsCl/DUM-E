@@ -1,0 +1,166 @@
+import os
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.conditions import IfCondition
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+from ament_index_python.packages import get_package_share_directory
+from moveit_configs_utils import MoveItConfigsBuilder
+
+
+def generate_launch_description():
+
+    # Command-line arguments
+    rviz_config_arg = DeclareLaunchArgument(
+        "rviz_config",
+        default_value="moveit.rviz",
+        description="RViz configuration file",
+    )
+
+    db_arg = DeclareLaunchArgument(
+        "db", default_value="False", description="Database flag"
+    )
+
+    ros2_control_hardware_type = DeclareLaunchArgument(
+        "ros2_control_hardware_type",
+        default_value="mock_components",
+        description=(
+            "ROS 2 control hardware interface type to use for the launch file -- possible values: "
+            "[mock_components, isaac]"
+        ),
+    )
+
+    # Build MoveIt configuration for your robot "smarty"
+    moveit_config = (
+        MoveItConfigsBuilder("smarty", package_name="dum-e_plan")
+        .robot_description(
+            file_path="config/smarty.urdf.xacro",
+            mappings={
+                "ros2_control_hardware_type": LaunchConfiguration("ros2_control_hardware_type")
+            },
+        )
+        .robot_description_semantic(file_path="config/smarty.srdf")
+        .planning_scene_monitor(
+            publish_robot_description=True, publish_robot_description_semantic=True
+        )
+        # Use your trajectory execution configuration file (update file name as needed)
+        .trajectory_execution(file_path="config/moveit_controllers.yaml")
+        # You can list additional planning pipelines if desired; here we use only "ompl"
+        .planning_pipelines(pipelines=["ompl"])
+        .to_moveit_configs()
+    )
+
+    # Start the actual move_group node/action server
+    move_group_node = Node(
+        package="moveit_ros_move_group",
+        executable="move_group",
+        output="screen",
+        parameters=[moveit_config.to_dict()],
+        arguments=["--ros-args", "--log-level", "info"],
+    )
+
+    # RViz configuration
+    rviz_base = LaunchConfiguration("rviz_config")
+    rviz_config_path = PathJoinSubstitution(
+        [FindPackageShare("dum-e_plan"), "config", "moveit.rviz"]
+    )
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="log",
+        arguments=["-d", rviz_config_path],
+        parameters=[
+            moveit_config.robot_description,
+            moveit_config.robot_description_semantic,
+            moveit_config.planning_pipelines,
+            moveit_config.robot_description_kinematics,
+            moveit_config.joint_limits,
+        ],
+    )
+
+    # Static TF publisher: from "world" to "base_link"
+    static_tf_node = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="static_transform_publisher",
+        output="log",
+        arguments=["0.0", "0.0", "0.0", "0.0", "0.0", "0.0", "world", "base_link"],
+    )
+
+    # Additional static TF publisher: from "map" to "world"
+    # This publishes a zero offset transform so that "map" exists and is identical to "world"
+    map_to_world_tf_node = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="map_to_world_static_transform_publisher",
+        output="log",
+        arguments=["0.0", "0.0", "0.0", "0.0", "0.0", "0.0", "map", "world"],
+    )
+
+    # Publish TF from URDF
+    robot_state_publisher = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        output="both",
+        parameters=[moveit_config.robot_description],
+    )
+
+    # ros2_control using a parameter file from your moveit config package
+    ros2_controllers_path = os.path.join(
+        get_package_share_directory("dum-e_plan"),
+        "config",
+        "ros2_controllers.yaml",
+    )
+    ros2_control_node = Node(
+        package="controller_manager",
+        executable="ros2_control_node",
+        parameters=[ros2_controllers_path],
+        remappings=[
+            ("/controller_manager/robot_description", "/robot_description"),
+        ],
+        output="screen",
+    )
+
+    # Spawner for the joint_state_broadcaster
+    joint_state_broadcaster_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
+            "joint_state_broadcaster",
+            "--controller-manager",
+            "/controller_manager",
+        ],
+    )
+
+    # (Optional) Warehouse mongodb server for MoveIt data logging
+    db_config = LaunchConfiguration("db")
+    mongodb_server_node = Node(
+        package="warehouse_ros_mongo",
+        executable="mongo_wrapper_ros.py",
+        parameters=[
+            {"warehouse_port": 33829},
+            {"warehouse_host": "localhost"},
+            {"warehouse_plugin": "warehouse_ros_mongo::MongoDatabaseConnection"},
+        ],
+        output="screen",
+        condition=IfCondition(db_config),
+    )
+
+    return LaunchDescription(
+        [
+            rviz_config_arg,
+            db_arg,
+            ros2_control_hardware_type,
+            rviz_node,
+            static_tf_node,
+            map_to_world_tf_node,
+            robot_state_publisher,
+            move_group_node,
+            ros2_control_node,
+            joint_state_broadcaster_spawner,
+            mongodb_server_node,
+        ]
+    )
