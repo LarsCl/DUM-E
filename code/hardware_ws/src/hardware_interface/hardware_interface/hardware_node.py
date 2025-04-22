@@ -1,4 +1,4 @@
-1#!/usr/bin/env python3
+#!/usr/bin/env python3
 import rclpy
 import numpy as np
 from rclpy.node import Node
