@@ -1,4 +1,4 @@
-1#!/usr/bin/env python3
+#!/usr/bin/env python3
 import rclpy
 import numpy as np
 from rclpy.node import Node
@@ -7,7 +7,7 @@ from trajectory_msgs.msg import JointTrajectory
 from control_msgs.action import FollowJointTrajectory
 from sensor_msgs.msg import JointState
 from pprint import pprint
-from scripts.uart_classes import ArduinoUART, ODriveUART # Your custom Python class
+from scripts.uart_classes import ArduinoUART, ODriveUART # our custom Python class
 
 class HardwareInterfaceNode(Node):
     def __init__(self):
