@@ -13,7 +13,7 @@ class HardwareInterfaceNode(Node):
     def __init__(self):
         super().__init__('hardware_interface_node')
         print("Hardware interface active")
-        # Initialize your UART hardware interface
+        # Initialize UART hardware interface
         self.arduino= ArduinoUART(port='/dev/ttyUSB0', baud_rate=115200)
         self.odrive1= ODriveUART(port='/dev/ttyUSB1', baud_rate=115200)
         self.odrive2= ODriveUART(port='/dev/ttyUSB2', baud_rate=115200)
@@ -50,7 +50,7 @@ class HardwareInterfaceNode(Node):
             positions = point.positions
             velocities = point.velocities
             print(f"we going to {point}")
-            # Example: Send commands to hardware
+            # Send commands to hardware
             self.arduino.send_joint_targets_position(int(positions[0] / np.pi * 1800),
                                                      int(positions[3] / np.pi * 1800), 
                                                      int(positions[4] / np.pi * 1800), 
@@ -69,7 +69,7 @@ class HardwareInterfaceNode(Node):
             self.odrive1.move_pos(self.odrive_pos1, self.odrive_vel1)
             self.odrive2.move_pos(self.odrive_pos2, self.odrive_vel2)
 
-            # Simulate execution delay (you can replace this with real-time checks)
+            # Simulate execution delay
             self.get_clock().sleep_for(rclpy.duration.Duration(seconds=0.1))
 
         # Mark the goal as succeeded
@@ -81,7 +81,7 @@ class HardwareInterfaceNode(Node):
         return result
 
     def read_and_publish_state(self):
-        # Read joint state from your hardware via UART
+        # Read joint state from hardware via UART
         arduino_pos_state = self.arduino.get_positions() # = degrees * 10
         arduino_vel_state = self.arduino.get_velocities() # = rpm * 10
         if arduino_pos_state or arduino_vel_state == [None, None, None, None]:
